@@ -295,7 +295,7 @@ class SFCRunner:
                 )
 
             # Run the configuration with SFC
-            print(f"▶️ Running SFC with configuration "+config_filename)
+            print(f"▶️ Running SFC with configuration " + config_filename)
             command = [sfc_executable, "-config", config_filename, "-trace"]
 
             # Set up environment variables for the SFC process

@@ -173,7 +173,7 @@ def generate_target_types(target: str, sfc_knowledge: Dict[str, Any]) -> Dict[st
             "JarFiles": ["${MODULES_DIR}/aws-timestream-target/lib"],
             "FactoryClassName": "com.amazonaws.sfc.awstimestream.AwsTimestreamTargetWriter",
         }
-        
+
     # Edge targets
     elif target == "DEBUG":
         target_types["DEBUG-TARGET"] = {

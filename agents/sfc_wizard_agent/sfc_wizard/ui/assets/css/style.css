@@ -1,0 +1,313 @@
+/* 
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: MIT-0
+
+Custom CSS for the SFC Wizard Agent UI.
+*/
+
+/* General styling */
+body {
+    font-family: 'Amazon Ember', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Header styling */
+.stApp header {
+    background-color: #232f3e;
+}
+
+/* Chat message styling */
+.stChatMessage {
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.stChatMessage.user {
+    background-color: #f0f2f5;
+}
+
+.stChatMessage.assistant {
+    background-color: #f7f7f7;
+}
+
+/* Code block styling */
+pre {
+    border-radius: 5px;
+    padding: 10px;
+    background-color: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    overflow-x: auto;
+}
+
+code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.9em;
+}
+
+/* Syntax highlighting */
+.language-json .token.property {
+    color: #0550ae;
+}
+
+.language-json .token.string {
+    color: #0a3069;
+}
+
+.language-json .token.number {
+    color: #116329;
+}
+
+.language-json .token.boolean {
+    color: #cf222e;
+}
+
+.language-json .token.null {
+    color: #953800;
+}
+
+/* Attachment styling */
+.attachment-header {
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+.attachment-container {
+    border: 1px solid #e1e4e8;
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+/* Button styling */
+.stButton button {
+    border-radius: 5px;
+    font-weight: 500;
+}
+
+/* Download button styling */
+.stDownloadButton button {
+    background-color: #ff9900;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-weight: 500;
+}
+
+.stDownloadButton button:hover {
+    background-color: #e88b00;
+}
+
+/* Spinner styling */
+.stSpinner {
+    color: #ff9900;
+}
+
+/* Divider styling */
+.stDivider {
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+/* Expander styling */
+.streamlit-expanderHeader {
+    font-weight: 600;
+    color: #232f3e;
+}
+
+/* Sidebar styling */
+.stSidebar {
+    background-color: #f7f7f7;
+}
+
+/* Error message styling */
+.stAlert {
+    border-radius: 5px;
+}
+
+/* Responsive design styles */
+
+/* Mobile devices (phones, 768px and down) */
+@media only screen and (max-width: 768px) {
+    /* Adjust header for mobile */
+    .stApp header {
+        padding: 0.5rem;
+    }
+    
+    /* Make buttons more touch-friendly */
+    .stButton button {
+        padding: 0.5rem;
+        min-height: 44px; /* Minimum touch target size */
+        width: 100%; /* Full width buttons on mobile */
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Adjust chat interface for mobile */
+    .stChatMessage {
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+    
+    /* Make code blocks scrollable on small screens */
+    pre {
+        max-width: 100%;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    /* Adjust font sizes for better readability */
+    body {
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 1.5rem !important;
+    }
+    
+    h2 {
+        font-size: 1.3rem !important;
+    }
+    
+    h3 {
+        font-size: 1.1rem !important;
+    }
+    
+    /* Make columns stack on mobile */
+    div[data-testid="column"] {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        margin-bottom: 1rem;
+    }
+    
+    /* Adjust expanders for mobile */
+    .streamlit-expanderHeader {
+        padding: 0.5rem !important;
+    }
+    
+    /* Make tabs more compact */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 1px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+        font-size: 0.8rem;
+    }
+    
+    /* Adjust sidebar for mobile */
+    .stSidebar {
+        width: 100% !important;
+    }
+}
+
+/* Tablets and small laptops (between 769px and 992px) */
+@media only screen and (min-width: 769px) and (max-width: 992px) {
+    /* Adjust font sizes for better readability */
+    body {
+        font-size: 15px;
+    }
+    
+    h1 {
+        font-size: 1.8rem !important;
+    }
+    
+    h2 {
+        font-size: 1.5rem !important;
+    }
+    
+    h3 {
+        font-size: 1.2rem !important;
+    }
+    
+    /* Adjust button sizes */
+    .stButton button {
+        padding: 0.4rem 0.8rem;
+    }
+    
+    /* Make columns more balanced */
+    div[data-testid="column"] {
+        padding: 0 0.5rem;
+    }
+}
+
+/* Visualization container styling */
+.visualization-container {
+    border: 1px solid #e1e4e8;
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 15px;
+    background-color: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.visualization-container:hover {
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+}
+
+/* Responsive visualization title */
+.visualization-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media only screen and (max-width: 768px) {
+    .visualization-title {
+        font-size: 1rem;
+    }
+    
+    /* Adjust visualization containers for mobile */
+    .visualization-container {
+        padding: 8px;
+        margin-bottom: 10px;
+    }
+}
+
+/* Responsive layout for configuration editor */
+@media only screen and (max-width: 768px) {
+    /* Make text areas more usable on mobile */
+    textarea {
+        min-height: 200px !important;
+    }
+    
+    /* Adjust JSON display */
+    .element-container div[data-testid="stJson"] {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+}
+
+/* Screen size detection div */
+#screen-size-detector {
+    height: 0px;
+    width: 0px;
+    overflow: hidden;
+    position: absolute;
+}
+
+/* Responsive table styling */
+div[data-testid="stTable"] {
+    overflow-x: auto;
+}
+
+/* Responsive dataframe styling */
+div[data-testid="stDataFrame"] {
+    overflow-x: auto;
+}
+
+/* Responsive chart styling */
+div[data-testid="stPlotlyChart"] {
+    width: 100% !important;
+}
+
+/* Responsive image styling */
+img {
+    max-width: 100%;
+    height: auto;
+}

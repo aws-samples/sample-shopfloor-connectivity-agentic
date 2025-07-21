@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Git Task Commit",
+  "description": "Automatically commits and pushes changes to the feature branch after a task is completed",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "I notice you've completed a task. Let me help you commit and push these changes to your feature branch.\n\n1. First, I'll check which branch you're currently on\n2. If you're on a feature branch (not main/master), I'll commit the changes with a descriptive message\n3. Then I'll push the changes to the remote repository\n\nPlease provide a brief description of the task you just completed so I can use it for the commit message."
+  }
+}

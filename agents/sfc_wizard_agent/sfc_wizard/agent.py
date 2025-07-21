@@ -13,6 +13,14 @@ import threading
 import queue
 from dotenv import load_dotenv
 
+# Import UI module
+try:
+    from sfc_wizard.ui import launch_app
+
+    UI_AVAILABLE = True
+except ImportError:
+    UI_AVAILABLE = False
+
 # Import the externalized functions
 from sfc_wizard.tools.config_generator import generate_config_template
 from sfc_wizard.tools.sfc_knowledge import load_sfc_knowledge
@@ -46,7 +54,10 @@ def _create_mcp_client():
 
     # NOTE: Use .env file at repo-root for local dev setup (copy 1:1 from .env.template as a start...)
     mcp_command = os.getenv("MCP_SERVER_COMMAND", "uvx")
-    mcp_args_str = os.getenv("MCP_SERVER_ARGS", "--from,git+https://github.com/aws-samples/sample-shopfloor-connectivity-agentic.git#subdirectory=mcp-servers/sfc-spec-server")
+    mcp_args_str = os.getenv(
+        "MCP_SERVER_ARGS",
+        "--from,git+https://github.com/aws-samples/sample-shopfloor-connectivity-agentic.git#subdirectory=mcp-servers/sfc-spec-server",
+    )
     mcp_path = os.getenv("MCP_SERVER_PATH", "sfc_spec")
 
     # Parse comma-separated args and add the path
@@ -304,23 +315,23 @@ class SFCWizardAgent:
                 minutes=minutes,
                 jmespath_expr=jmespath_expr,
             )
-            
+
         @tool
         def run_example(input_text: str) -> str:
             """Run the example SFC configuration when receiving 'example' as input.
-            
+
             Args:
                 input_text: The text input from the user
             """
             if input_text.lower().strip() == "example":
                 # Path to the example config file
                 example_config_path = "sfc-config-example.json"
-                
+
                 try:
                     # Read the example config file
-                    with open(example_config_path, 'r') as f:
+                    with open(example_config_path, "r") as f:
                         config_json = f.read()
-                    
+
                     # Run the example configuration using the existing tool
                     return self._run_sfc_config_locally(config_json, "example-config")
                 except Exception as e:
@@ -331,10 +342,10 @@ class SFCWizardAgent:
         # Create agent with SFC-specific tools
         try:
             # Get model ID from environment variable with default value if not set
-            model_id = os.getenv("BEDROCK_MODEL_ID", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0")
-            bedrock_model = BedrockModel(
-                model_id=model_id
+            model_id = os.getenv(
+                "BEDROCK_MODEL_ID", "eu.anthropic.claude-3-7-sonnet-20250219-v1:0"
             )
+            bedrock_model = BedrockModel(model_id=model_id)
             agent_internal_tools = [
                 validate_sfc_config,
                 create_sfc_config_template,
@@ -453,6 +464,16 @@ class SFCWizardAgent:
         for i in range(0, len(aws_targets), 3):
             print("   " + " | ".join(aws_targets[i : i + 3]))
         print()
+
+        # Launch the web UI if available
+        if UI_AVAILABLE:
+            try:
+                ui_url = launch_app(open_browser=True)
+                print(f"🌐 Web UI available at: {ui_url}")
+            except Exception as e:
+                print(f"⚠️ Failed to launch Web UI: {str(e)}")
+                print("   You can still use the command-line interface.")
+
         print("Type 'exit' or 'quit' to end the session.")
         print()
 
