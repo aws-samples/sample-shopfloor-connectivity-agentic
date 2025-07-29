@@ -97,7 +97,7 @@ class SFCRunner:
             # Add a timestamp suffix to the test directory name
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             folder_name = f"{config_name}_{timestamp}"
-            
+
             # Create a test directory with the config name and timestamp inside the runs folder
             test_dir = os.path.join(runs_dir, folder_name)
             if not os.path.exists(test_dir):

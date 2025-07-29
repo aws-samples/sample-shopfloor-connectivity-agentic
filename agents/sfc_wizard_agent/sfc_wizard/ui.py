@@ -26,7 +26,12 @@ class StreamingOutputCapture:
     """Capture and stream stdout/stderr output in real-time."""
 
     def __init__(
-        self, socketio, session_id, original_stdout=None, original_stderr=None
+        self,
+        socketio,
+        session_id,
+        original_stdout=None,
+        original_stderr=None,
+        stop_event=None,
     ):
         self.socketio = socketio
         self.session_id = session_id
@@ -35,6 +40,7 @@ class StreamingOutputCapture:
         self.accumulated_output = ""
         self.last_emit_time = time.time()
         self.emit_interval = 0.1  # Emit every 100ms
+        self.stop_event = stop_event
 
     def write(self, text):
         """Write method for capturing output."""
@@ -55,7 +61,9 @@ class StreamingOutputCapture:
 
     def emit_partial_response(self):
         """Emit partial response to the client."""
-        if self.accumulated_output.strip():
+        if self.accumulated_output.strip() and (
+            not self.stop_event or not self.stop_event.is_set()
+        ):
             self.socketio.emit(
                 "agent_streaming",
                 {
@@ -92,6 +100,10 @@ class ChatUI:
         self.conversations: Dict[str, List[Dict]] = {}
         self.session_timestamps: Dict[str, datetime] = {}
         self.session_expiry_minutes = 60
+
+        # Track active agent threads for stop functionality
+        self.active_threads: Dict[str, threading.Thread] = {}
+        self.stop_events: Dict[str, threading.Event] = {}
 
         # SFC Wizard Agent will be initialized later within MCP context
         self.sfc_agent = None
@@ -319,6 +331,10 @@ class ChatUI:
             # Capture session ID and socket ID before spawning thread
             current_sid = request.sid
 
+            # Create stop event for this session
+            stop_event = threading.Event()
+            self.stop_events[session_id] = stop_event
+
             # Process message with agent in background thread
             def process_agent_response(sid):
                 streaming_capture = None
@@ -326,11 +342,15 @@ class ChatUI:
                     # Emit typing indicator
                     self.socketio.emit("agent_typing", {"typing": True}, room=sid)
 
-                    # Signal start of streaming response
-                    self.socketio.emit("agent_streaming_start", {}, room=sid)
+                    # Signal start of streaming response with session context
+                    self.socketio.emit(
+                        "agent_streaming_start", {"session_id": session_id}, room=sid
+                    )
 
-                    # Create streaming output capture
-                    streaming_capture = StreamingOutputCapture(self.socketio, sid)
+                    # Create streaming output capture with stop event awareness
+                    streaming_capture = StreamingOutputCapture(
+                        self.socketio, sid, stop_event=stop_event
+                    )
 
                     # Capture stdout and stderr for streaming
                     original_stdout = sys.stdout
@@ -341,45 +361,71 @@ class ChatUI:
                         sys.stdout = streaming_capture
                         sys.stderr = streaming_capture
 
-                        # Process with SFC Agent (this is where the agent loop happens)
-                        response = self.sfc_agent.agent(user_message)
+                        # Check if generation was stopped before starting
+                        if stop_event.is_set():
+                            self.socketio.emit(
+                                "generation_stopped",
+                                {"message": "Generation was stopped before starting."},
+                                room=sid,
+                            )
+                            return
+
+                        # Process with SFC Agent with periodic stop checks
+                        response = self._run_agent_with_stop_check(
+                            user_message, stop_event, sid
+                        )
+
+                        # Check if generation was stopped during processing
+                        if stop_event.is_set():
+                            self.socketio.emit(
+                                "generation_stopped",
+                                {"message": "Generation was stopped by user."},
+                                room=sid,
+                            )
+                            return
 
                         # Ensure any remaining output is flushed
                         streaming_capture.flush()
-                        
+
                         # For visualization data, force flush any pending output
                         if "visualize" in user_message.lower():
-                            print("Ensuring visualization data is properly displayed...")
-                            self.socketio.sleep(0.5)  # Short delay to ensure output is processed
+                            print(
+                                "Ensuring visualization data is properly displayed..."
+                            )
+                            self.socketio.sleep(
+                                0.5
+                            )  # Short delay to ensure output is processed
 
                     finally:
                         # Always restore original stdout/stderr
                         sys.stdout = original_stdout
                         sys.stderr = original_stderr
 
-                    # Format the response for UI display - ensure it's a string
-                    if hasattr(response, "content"):
-                        formatted_response = str(response.content)
-                    elif hasattr(response, "text"):
-                        formatted_response = str(response.text)
-                    else:
-                        formatted_response = str(response)
+                    # Only proceed with response if not stopped
+                    if not stop_event.is_set():
+                        # Format the response for UI display - ensure it's a string
+                        if hasattr(response, "content"):
+                            formatted_response = str(response.content)
+                        elif hasattr(response, "text"):
+                            formatted_response = str(response.text)
+                        else:
+                            formatted_response = str(response)
 
-                    # Signal end of streaming
-                    self.socketio.emit("agent_streaming_end", {}, room=sid)
+                        # Signal end of streaming
+                        self.socketio.emit("agent_streaming_end", {}, room=sid)
 
-                    # Create response message - just add to conversation history,
-                    # but don't send again to client to avoid duplication
-                    agent_msg = {
-                        "role": "assistant",
-                        "content": formatted_response,
-                        "timestamp": datetime.now().isoformat(),
-                    }
+                        # Create response message - just add to conversation history,
+                        # but don't send again to client to avoid duplication
+                        agent_msg = {
+                            "role": "assistant",
+                            "content": formatted_response,
+                            "timestamp": datetime.now().isoformat(),
+                        }
 
-                    # Add to conversation history
-                    self.conversations[session_id].append(agent_msg)
+                        # Add to conversation history
+                        self.conversations[session_id].append(agent_msg)
 
-                    # No need to emit agent_response here as streaming already showed the content
+                        # No need to emit agent_response here as streaming already showed the content
 
                 except Exception as e:
                     # Ensure streaming is ended even on error
@@ -387,15 +433,29 @@ class ChatUI:
                         streaming_capture.flush()
                     self.socketio.emit("agent_streaming_end", {}, room=sid)
 
-                    error_msg = {
-                        "role": "assistant",
-                        "content": f"❌ Error processing request: {str(e)}\nPlease try rephrasing your question or check your configuration.",
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                    self.conversations[session_id].append(error_msg)
-                    self.socketio.emit("agent_response", error_msg, room=sid)
-                    self.logger.error(f"Error processing message: {str(e)}")
+                    # Check if this was due to a stop event
+                    if stop_event.is_set():
+                        self.socketio.emit(
+                            "generation_stopped",
+                            {"message": "Generation was stopped by user."},
+                            room=sid,
+                        )
+                    else:
+                        error_msg = {
+                            "role": "assistant",
+                            "content": f"❌ Error processing request: {str(e)}\nPlease try rephrasing your question or check your configuration.",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        self.conversations[session_id].append(error_msg)
+                        self.socketio.emit("agent_response", error_msg, room=sid)
+                        self.logger.error(f"Error processing message: {str(e)}")
                 finally:
+                    # Clean up session tracking
+                    if session_id in self.stop_events:
+                        del self.stop_events[session_id]
+                    if session_id in self.active_threads:
+                        del self.active_threads[session_id]
+
                     # Stop typing indicator
                     self.socketio.emit("agent_typing", {"typing": False}, room=sid)
 
@@ -404,7 +464,27 @@ class ChatUI:
                 target=process_agent_response, args=(current_sid,)
             )
             thread.daemon = True
+            self.active_threads[session_id] = thread
             thread.start()
+
+        @self.socketio.on("stop_generation")
+        def handle_stop_generation(data):
+            """Handle request to stop generation."""
+            session_id = session.get("session_id")
+            if not session_id:
+                return
+
+            self.logger.info(f"Stop generation requested for session: {session_id}")
+
+            # Set the stop event for this session
+            if session_id in self.stop_events:
+                self.stop_events[session_id].set()
+                emit("generation_stop_acknowledged", {"session_id": session_id})
+            else:
+                emit(
+                    "generation_stop_error",
+                    {"message": "No active generation to stop."},
+                )
 
         @self.socketio.on("clear_conversation")
         def handle_clear_conversation(data=None):
@@ -425,7 +505,7 @@ class ChatUI:
 
             # Initialize conversation for the session ID
             self.conversations[session_id] = []
-            
+
             # Clear agent's conversation context/memory by reinitializing it
             if self.sfc_agent is not None:
                 try:
@@ -434,7 +514,7 @@ class ChatUI:
                     self.logger.info(f"Agent context cleared for session: {session_id}")
                 except Exception as e:
                     self.logger.error(f"Error clearing agent context: {str(e)}")
-            
+
             # Send new welcome message
             welcome_message = self._get_welcome_message()
             formatted_welcome = welcome_message
@@ -446,9 +526,134 @@ class ChatUI:
                 }
             )
             emit("conversation_cleared", {"messages": self.conversations[session_id]})
-            
+
             # Update session timestamp in server-side records
             self.session_timestamps[session_id] = datetime.now()
+
+    def _run_agent_with_stop_check(self, user_message, stop_event, session_id):
+        """Run the agent with comprehensive output suppression when stopped."""
+        import time
+        import builtins
+
+        class StoppableAgent:
+            def __init__(self, agent, stop_event):
+                self.agent = agent
+                self.stop_event = stop_event
+                self.result = None
+                self.error = None
+                self.completed = False
+
+            def run_in_thread(self, message):
+                """Run the agent in a separate thread with comprehensive output control."""
+                try:
+                    import sys
+                    import os
+
+                    # Store original functions
+                    original_stdout_write = sys.stdout.write
+                    original_stderr_write = sys.stderr.write
+                    original_print = builtins.print
+                    original_os_write = os.write
+
+                    # Create suppressed versions
+                    def suppressed_stdout_write(text):
+                        if self.stop_event.is_set():
+                            return len(text)  # Suppress output
+                        return original_stdout_write(text)
+
+                    def suppressed_stderr_write(text):
+                        if self.stop_event.is_set():
+                            return len(text)  # Suppress output
+                        return original_stderr_write(text)
+
+                    def suppressed_print(*args, **kwargs):
+                        if self.stop_event.is_set():
+                            return  # Suppress print
+                        return original_print(*args, **kwargs)
+
+                    def suppressed_os_write(fd, text):
+                        if self.stop_event.is_set() and fd in (
+                            1,
+                            2,
+                        ):  # stdout=1, stderr=2
+                            return len(text) if isinstance(text, (bytes, str)) else 0
+                        return original_os_write(fd, text)
+
+                    # Apply patches
+                    sys.stdout.write = suppressed_stdout_write
+                    sys.stderr.write = suppressed_stderr_write
+                    builtins.print = suppressed_print
+                    os.write = suppressed_os_write
+
+                    try:
+                        # Run the agent
+                        response = self.agent(message)
+
+                        if not self.stop_event.is_set():
+                            self.result = response
+                        else:
+                            self.result = "Generation stopped by user."
+                    finally:
+                        # Restore original functions
+                        sys.stdout.write = original_stdout_write
+                        sys.stderr.write = original_stderr_write
+                        builtins.print = original_print
+                        os.write = original_os_write
+
+                except Exception as e:
+                    if not self.stop_event.is_set():
+                        self.error = str(e)
+                    else:
+                        self.result = "Generation stopped by user."
+                finally:
+                    self.completed = True
+
+            def run_with_timeout(self, message, timeout=300):
+                """Run the agent with timeout and stop check."""
+                import threading
+
+                # Start agent in background thread
+                agent_thread = threading.Thread(
+                    target=self.run_in_thread, args=(message,)
+                )
+                agent_thread.daemon = True
+                agent_thread.start()
+
+                # Wait for completion or stop event
+                start_time = time.time()
+                while agent_thread.is_alive() and not self.completed:
+                    if self.stop_event.is_set():
+                        # User requested stop - suppress output and wait briefly for graceful shutdown
+                        print("🛑 Stop requested - suppressing agent output...")
+                        time.sleep(1.0)  # Give more time for graceful shutdown
+                        if agent_thread.is_alive():
+                            print(
+                                "⚠️ Agent thread still running in background (output suppressed)"
+                            )
+                            return "Generation stopped by user."
+                        break
+
+                    if time.time() - start_time > timeout:
+                        return f"Generation timed out after {timeout} seconds."
+
+                    time.sleep(0.1)  # Check every 100ms
+
+                # Return result
+                if self.error:
+                    return f"Error: {self.error}"
+                elif self.result:
+                    if hasattr(self.result, "content"):
+                        return str(self.result.content)
+                    elif hasattr(self.result, "text"):
+                        return str(self.result.text)
+                    else:
+                        return str(self.result)
+                else:
+                    return "No response generated."
+
+        # Create and run the stoppable agent
+        stoppable_agent = StoppableAgent(self.sfc_agent.agent, stop_event)
+        return stoppable_agent.run_with_timeout(user_message)
 
     def _get_welcome_message(self) -> str:
         """Get the welcome message for new conversations."""

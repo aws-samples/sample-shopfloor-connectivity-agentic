@@ -3,6 +3,7 @@ class SFCWizardChat {
         this.messagesContainer = document.getElementById('messagesContainer');
         this.messageInput = document.getElementById('messageInput');
         this.sendBtn = document.getElementById('sendBtn');
+        this.stopBtn = document.getElementById('stopBtn');
         this.typingIndicator = document.getElementById('typingIndicator');
         this.messageForm = document.getElementById('messageForm');
         this.sessionTimerElement = document.getElementById('sessionTimer');
@@ -28,6 +29,7 @@ class SFCWizardChat {
         this.streamingContentDiv = null;
         this.streamingAccumulatedText = '';
         this.isStreaming = false;
+        this.isGenerating = false;
         
         this.initializeSession();
         this.setupFormHandlers();
@@ -275,8 +277,10 @@ class SFCWizardChat {
         });
 
         // Handle streaming events
-        this.socket.on('agent_streaming_start', () => {
+        this.socket.on('agent_streaming_start', (data) => {
             this.startStreaming();
+            this.isGenerating = true;
+            this.updateButtonStates();
         });
 
         this.socket.on('agent_streaming', (data) => {
@@ -285,6 +289,33 @@ class SFCWizardChat {
 
         this.socket.on('agent_streaming_end', () => {
             this.endStreaming();
+            this.isGenerating = false;
+            this.updateButtonStates();
+        });
+
+        // Handle stop generation events
+        this.socket.on('generation_stopped', (data) => {
+            console.log('Generation stopped:', data.message);
+            this.endStreaming();
+            this.isGenerating = false;
+            this.updateButtonStates();
+            
+            // Show stop message
+            const stopMessage = {
+                role: 'assistant',
+                content: `⏹️ ${data.message}`,
+                timestamp: new Date().toISOString()
+            };
+            this.displayMessage(stopMessage);
+        });
+
+        this.socket.on('generation_stop_acknowledged', (data) => {
+            console.log('Stop generation acknowledged for session:', data.session_id);
+        });
+
+        this.socket.on('generation_stop_error', (data) => {
+            console.error('Stop generation error:', data.message);
+            alert(data.message);
         });
 
         this.socket.on('conversation_cleared', (data) => {
@@ -314,6 +345,43 @@ class SFCWizardChat {
                 this.sendMessage();
             }
         });
+
+        // Setup stop button handler
+        if (this.stopBtn) {
+            this.stopBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.stopGeneration();
+            });
+        }
+    }
+
+    updateButtonStates() {
+        if (this.sendBtn) {
+            this.sendBtn.disabled = this.isGenerating || !this.isReady;
+        }
+        
+        if (this.stopBtn) {
+            this.stopBtn.style.display = this.isGenerating ? 'inline-block' : 'none';
+        }
+        
+        if (this.messageInput) {
+            this.messageInput.disabled = this.isGenerating || !this.isReady;
+        }
+    }
+
+    stopGeneration() {
+        if (!this.isReady || !this.socket) {
+            this.showErrorMessage('❌ Agent is not ready. Please wait for initialization to complete.');
+            return;
+        }
+
+        if (!this.isGenerating) {
+            console.log('No active generation to stop');
+            return;
+        }
+
+        console.log('Stopping generation...');
+        this.socket.emit('stop_generation', { sessionId: this.sessionId });
     }
 
     sendMessage() {

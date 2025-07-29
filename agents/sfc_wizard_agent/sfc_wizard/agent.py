@@ -169,13 +169,13 @@ class SFCWizardAgent:
             Note: When follow=True, the function will enter a real-time viewing mode.
                   The only way to exit this mode is by pressing Ctrl+C in the terminal.
                   After exiting, you'll be returned to the command prompt.
-                  
+
                   This feature is only available in CLI mode and will be disabled in UI mode.
             """
             # Disable follow mode in UI mode since it requires terminal interaction
             if self.is_ui_mode and follow:
                 return "❌ Log follow mode is not available in the web interface. Please use the standard log viewing without the follow option."
-                
+
             return SFCLogOperations.tail_logs(
                 self.current_config_name, lines, follow, self.log_buffer
             )
@@ -206,7 +206,9 @@ class SFCWizardAgent:
             )
 
         @tool
-        def visualize_data(minutes: int = 10, jmespath_expr: str = "value", seconds: int = None) -> str:
+        def visualize_data(
+            minutes: int = 10, jmespath_expr: str = "value", seconds: int = None
+        ) -> str:
             """Visualize data from the currently running SFC configuration with FILE-TARGET enabled.
 
             Shows the data using a visualizer (ncurses in CLI mode or markdown in UI mode).
@@ -219,13 +221,13 @@ class SFCWizardAgent:
             """
             # Debug print for UI mode detection
             print(f"🔍 Visualization UI mode detected: {self.is_ui_mode}")
-            
+
             # Log timeframe info
             if seconds is not None:
                 print(f"📊 Visualizing data from the last {seconds} seconds")
             else:
                 print(f"📊 Visualizing data from the last {minutes} minutes")
-            
+
             result = visualize_file_target_data(
                 config_name=self.current_config_name,
                 minutes=minutes,
@@ -233,11 +235,11 @@ class SFCWizardAgent:
                 ui_mode=self.is_ui_mode,
                 seconds=seconds,
             )
-            
+
             # Force the visualization to print directly in UI mode
             if self.is_ui_mode:
                 print(f"\n{result}\n")
-                
+
             return result
 
         @tool

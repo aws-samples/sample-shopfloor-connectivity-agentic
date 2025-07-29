@@ -15,8 +15,11 @@ from sfc_wizard.tools.data_visualizer import visualize_time_series
 
 
 def visualize_file_target_data(
-    config_name: Optional[str], minutes: int = None, jmespath_expr: str = "value", ui_mode: bool = False,
-    seconds: int = 15
+    config_name: Optional[str],
+    minutes: int = None,
+    jmespath_expr: str = "value",
+    ui_mode: bool = False,
+    seconds: int = 15,
 ) -> str:
     """
     Visualize data from an active SFC configuration with FILE-TARGET
@@ -95,7 +98,7 @@ def visualize_file_target_data(
         # Default to 15 seconds if neither is provided
         timeframe_seconds = 15
         timeframe_description = "last 15 seconds"
-    
+
     # Call the data visualizer with UI mode parameter
     result = visualize_time_series(data_dir, jmespath_expr, timeframe_seconds, ui_mode)
 
