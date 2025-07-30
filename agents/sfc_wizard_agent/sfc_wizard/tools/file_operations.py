@@ -8,7 +8,7 @@ Handles reading and writing configuration files.
 
 import os
 import json
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
 class SFCFileOperations:
@@ -81,3 +81,62 @@ class SFCFileOperations:
             return "❌ Invalid JSON configuration provided"
         except Exception as e:
             return f"❌ Error saving configuration: {str(e)}"
+            
+    @staticmethod
+    def save_results_to_file(content: str, filename: str, current_config_name: str = None) -> str:
+        """Save content to a file with specified extension
+
+        Args:
+            content: Content to save to the file
+            filename: Name of the file to save the content to
+            current_config_name: Current config run name (optional)
+
+        Returns:
+            String result message indicating success or failure
+        """
+        try:
+            # List of allowed file extensions
+            allowed_extensions = ["txt", "vm", "md"]
+            default_extension = "txt"
+            
+            # Check if filename has an extension
+            has_extension = False
+            for ext in allowed_extensions:
+                if filename.lower().endswith(f".{ext}"):
+                    has_extension = True
+                    break
+                    
+            # Add default extension if no valid extension is provided
+            if not has_extension:
+                filename += f".{default_extension}"
+            
+            # Get base filename (without path)
+            base_filename = os.path.basename(filename)
+            
+            # Create the stored_results directory if it doesn't exist
+            storage_dir = ".sfc/stored_results"
+            os.makedirs(storage_dir, exist_ok=True)
+            
+            # Create the full path for the main storage directory
+            full_path = os.path.join(storage_dir, base_filename)
+            
+            # Write to file in the main storage directory
+            with open(full_path, "w") as file:
+                file.write(content)
+            
+            # Save additional copy in the current run directory if provided
+            run_path = None
+            if current_config_name:
+                run_dir = os.path.join(".sfc/runs", current_config_name)
+                if os.path.exists(run_dir):
+                    run_path = os.path.join(run_dir, base_filename)
+                    with open(run_path, "w") as file:
+                        file.write(content)
+            
+            # Prepare the result message
+            if run_path:
+                return f"✅ Results saved successfully to:\n- '{full_path}'\n- '{run_path}'"
+            else:
+                return f"✅ Results saved successfully to '{full_path}'"
+        except Exception as e:
+            return f"❌ Error saving results: {str(e)}"

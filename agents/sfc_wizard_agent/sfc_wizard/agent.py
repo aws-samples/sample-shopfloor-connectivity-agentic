@@ -144,6 +144,20 @@ class SFCWizardAgent:
                 filename: Name of the file to save the configuration to
             """
             return SFCFileOperations.save_config_to_file(config_json, filename)
+            
+        @tool
+        def save_results_to_file(content: str, filename: str) -> str:
+            """Save content to a file with specified extension (txt, vm, md).
+            
+            Args:
+                content: Content to save to the file
+                filename: Name of the file to save the content to (defaults to .txt extension if none provided)
+            
+            Notes:
+                When an SFC configuration is running, this will save the file both to the
+                central storage directory (.sfc/stored_results) and to the current run directory.
+            """
+            return SFCFileOperations.save_results_to_file(content, filename, self.current_config_name)
 
         @tool
         def run_sfc_config_locally(config_json: str, config_name: str = "") -> str:
@@ -296,6 +310,7 @@ class SFCWizardAgent:
             agent_internal_tools = [
                 read_config_from_file,
                 save_config_to_file,
+                save_results_to_file,
                 run_sfc_config_locally,
                 tail_logs,
                 clean_runs_folder,
@@ -366,6 +381,7 @@ class SFCWizardAgent:
         print("• 🔍 Debug existing SFC configurations")
         print("• 🛠️  Create new SFC configurations")
         print("• 💾 Save configurations to JSON files")
+        print("• 📄 Save results to text, markdown, or velocity template files")
         print("• 📂 Load configurations from JSON files")
         print("• ▶️  Run configurations in local test environments")
         print("• 🧪 Test configurations against environments")
