@@ -347,10 +347,12 @@ class ChatUI:
                         "agent_streaming_start", {"session_id": session_id}, room=sid
                     )
 
-                    # Create streaming output capture with stop event awareness
+                    # Create streaming output capture with stop event awareness (fresh instance)
                     streaming_capture = StreamingOutputCapture(
                         self.socketio, sid, stop_event=stop_event
                     )
+                    # Ensure it starts with clean state
+                    streaming_capture.accumulated_output = ""
 
                     # Capture stdout and stderr for streaming
                     original_stdout = sys.stdout
@@ -430,6 +432,8 @@ class ChatUI:
                 except Exception as e:
                     # Ensure streaming is ended even on error
                     if streaming_capture:
+                        # Clear any accumulated output before flushing
+                        streaming_capture.accumulated_output = ""
                         streaming_capture.flush()
                     self.socketio.emit("agent_streaming_end", {}, room=sid)
 
@@ -450,6 +454,10 @@ class ChatUI:
                         self.socketio.emit("agent_response", error_msg, room=sid)
                         self.logger.error(f"Error processing message: {str(e)}")
                 finally:
+                    # Clean up streaming capture
+                    if streaming_capture:
+                        streaming_capture.accumulated_output = ""
+
                     # Clean up session tracking
                     if session_id in self.stop_events:
                         del self.stop_events[session_id]
@@ -479,6 +487,33 @@ class ChatUI:
             # Set the stop event for this session
             if session_id in self.stop_events:
                 self.stop_events[session_id].set()
+
+                # Also call the SFC agent's stop method if available
+                if self.sfc_agent and hasattr(self.sfc_agent, "stop_generation"):
+                    try:
+                        self.sfc_agent.stop_generation()
+                        self.logger.info("SFC Agent stop_generation called")
+
+                        # Reset the agent state for new requests after stopping
+                        if hasattr(self.sfc_agent, "reset_for_new_request"):
+                            self.sfc_agent.reset_for_new_request()
+                            self.logger.info("SFC Agent state reset for new requests")
+                    except Exception as e:
+                        self.logger.error(f"Error calling SFC agent stop: {e}")
+
+                # Clear the session stop event after a brief moment to allow current processing to finish
+                import threading
+
+                def clear_session_stop_event():
+                    import time
+
+                    time.sleep(0.5)  # Wait for any current processing to finish
+                    if session_id in self.stop_events:
+                        self.stop_events[session_id].clear()
+                        self.logger.info(f"Session stop event cleared for {session_id}")
+
+                threading.Thread(target=clear_session_stop_event, daemon=True).start()
+
                 emit("generation_stop_acknowledged", {"session_id": session_id})
             else:
                 emit(

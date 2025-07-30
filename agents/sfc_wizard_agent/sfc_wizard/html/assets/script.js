@@ -293,24 +293,32 @@ class SFCWizardChat {
             this.updateButtonStates();
         });
 
-        // Handle stop generation events
+        // Handle stop generation events (from server-side stop events)
         this.socket.on('generation_stopped', (data) => {
             console.log('Generation stopped:', data.message);
-            this.endStreaming();
-            this.isGenerating = false;
-            this.updateButtonStates();
-            
-            // Show stop message
-            const stopMessage = {
-                role: 'assistant',
-                content: `⏹️ ${data.message}`,
-                timestamp: new Date().toISOString()
-            };
-            this.displayMessage(stopMessage);
+            // Note: UI state reset is handled by generation_stop_acknowledged
+            // This is mainly for server-initiated stops or other edge cases
         });
 
         this.socket.on('generation_stop_acknowledged', (data) => {
             console.log('Stop generation acknowledged for session:', data.session_id);
+            
+            // Immediately reset UI state when stop is acknowledged
+            this.endStreaming();
+            this.isGenerating = false;
+            this.updateButtonStates();
+            this.hideTypingIndicator();
+            
+            // Show immediate feedback to user
+            const stopMessage = {
+                role: 'assistant',
+                content: `⏹️ Generation stopped by user.`,
+                timestamp: new Date().toISOString()
+            };
+            this.displayMessage(stopMessage);
+            
+            // Add edit functionality to the last user message
+            this.addEditToLastUserMessage();
         });
 
         this.socket.on('generation_stop_error', (data) => {
@@ -618,6 +626,158 @@ class SFCWizardChat {
         this.streamingMessageDiv = null;
         this.streamingContentDiv = null;
         this.streamingAccumulatedText = '';
+    }
+
+    addEditToLastUserMessage() {
+        // Find the last user message
+        const messages = this.messagesContainer.querySelectorAll('.message.user');
+        if (messages.length === 0) return;
+        
+        const lastUserMessage = messages[messages.length - 1];
+        const content = lastUserMessage.querySelector('.message-content');
+        
+        // Don't add edit button if already exists
+        if (content.querySelector('.edit-btn')) return;
+        
+        // Get the original message text (excluding timestamp)
+        let messageText = '';
+        const timestamp = content.querySelector('.timestamp');
+        if (timestamp) {
+            // Clone the content, remove timestamp, get text
+            const contentClone = content.cloneNode(true);
+            const timestampClone = contentClone.querySelector('.timestamp');
+            if (timestampClone) {
+                timestampClone.remove();
+            }
+            messageText = contentClone.textContent.trim();
+        } else {
+            messageText = content.textContent.trim();
+        }
+        
+        // Store the original message text as a data attribute for easy access
+        content.dataset.originalMessage = messageText;
+        
+        // Add edit button
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+        editBtn.title = 'Edit message';
+        editBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.editMessage(content, messageText);
+        });
+        
+        // Insert before timestamp
+        if (timestamp) {
+            content.insertBefore(editBtn, timestamp);
+        } else {
+            content.appendChild(editBtn);
+        }
+    }
+
+    editMessage(contentDiv, originalText) {
+        // Don't edit if already editing
+        if (contentDiv.classList.contains('editing')) return;
+        
+        // Store original content
+        contentDiv.dataset.originalContent = contentDiv.innerHTML;
+        
+        // Create textarea for editing
+        const textarea = document.createElement('textarea');
+        textarea.className = 'edit-input';
+        textarea.value = originalText;
+        textarea.focus();
+        
+        // Create action buttons
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'edit-actions';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'edit-save-btn';
+        saveBtn.innerHTML = '<i class="fas fa-check"></i> Save';
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'edit-cancel-btn';
+        cancelBtn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        
+        actionsDiv.appendChild(saveBtn);
+        actionsDiv.appendChild(cancelBtn);
+        
+        // Set editing state
+        contentDiv.classList.add('editing');
+        contentDiv.innerHTML = '';
+        contentDiv.appendChild(textarea);
+        contentDiv.appendChild(actionsDiv);
+        
+        // Auto-resize textarea
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+        textarea.addEventListener('input', () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        });
+        
+        // Handle save
+        saveBtn.addEventListener('click', () => {
+            const newText = textarea.value.trim();
+            if (newText && newText !== originalText) {
+                // Cancel the edit first to restore normal UI state
+                this.cancelEdit(contentDiv);
+                
+                // Check if ready before sending (same checks as sendMessage)
+                if (!this.isReady || !this.socket) {
+                    this.showErrorMessage('❌ Agent is not ready. Please wait for initialization to complete.');
+                    return;
+                }
+                
+                // Send the edited message (this will trigger normal message flow)
+                this.socket.emit('send_message', { message: newText });
+            } else {
+                // Just cancel if no changes were made
+                this.cancelEdit(contentDiv);
+            }
+        });
+        
+        // Handle cancel
+        cancelBtn.addEventListener('click', () => {
+            this.cancelEdit(contentDiv);
+        });
+        
+        // Handle Escape key
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.cancelEdit(contentDiv);
+            } else if (e.key === 'Enter' && e.ctrlKey) {
+                saveBtn.click();
+            }
+        });
+    }
+
+    cancelEdit(contentDiv) {
+        contentDiv.classList.remove('editing');
+        contentDiv.innerHTML = contentDiv.dataset.originalContent;
+        delete contentDiv.dataset.originalContent;
+        
+        // Re-add the edit button since it was part of the original content before editing
+        const originalMessage = contentDiv.dataset.originalMessage;
+        if (originalMessage) {
+            const timestamp = contentDiv.querySelector('.timestamp');
+            const editBtn = document.createElement('button');
+            editBtn.className = 'edit-btn';
+            editBtn.innerHTML = '<i class="fas fa-edit"></i>';
+            editBtn.title = 'Edit message';
+            editBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.editMessage(contentDiv, originalMessage);
+            });
+            
+            // Insert before timestamp
+            if (timestamp) {
+                contentDiv.insertBefore(editBtn, timestamp);
+            } else {
+                contentDiv.appendChild(editBtn);
+            }
+        }
     }
 }
 

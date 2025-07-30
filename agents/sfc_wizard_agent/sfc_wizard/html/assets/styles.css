@@ -402,6 +402,89 @@ body {
     transform: none;
 }
 
+.edit-btn {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 4px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    font-size: 0.65rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    opacity: 0.7;
+}
+
+.edit-btn:hover {
+    opacity: 1;
+    background: rgba(16, 185, 129, 0.2);
+    border-color: #10b981;
+    transform: scale(1.05);
+}
+
+.message-content.editing {
+    background: #f0f9f4 !important;
+    border: 2px solid #10b981 !important;
+    position: relative;
+}
+
+.message-content.editing .edit-input {
+    width: 100%;
+    min-height: 60px;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    color: #1e293b;
+    resize: vertical;
+    padding: 8px;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    justify-content: flex-end;
+}
+
+.edit-save-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: transform 0.2s;
+}
+
+.edit-save-btn:hover {
+    transform: scale(1.05);
+}
+
+.edit-cancel-btn {
+    background: #6b7280;
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: transform 0.2s;
+}
+
+.edit-cancel-btn:hover {
+    transform: scale(1.05);
+    background: #4b5563;
+}
+
 .timestamp {
     font-size: 0.7rem;
     color: #9ca3af;

@@ -96,6 +96,11 @@ class SFCWizardAgent:
         # Track active SFC processes for cleanup
         self.active_processes = []
 
+        # Stop functionality
+        self.stop_event = threading.Event()
+        self.generation_lock = threading.Lock()
+        self.is_generating = False
+
         # Initialize the prompt logger
         self.prompt_logger = PromptLogger(max_history=20, log_dir=".sfc")
 
@@ -144,20 +149,22 @@ class SFCWizardAgent:
                 filename: Name of the file to save the configuration to
             """
             return SFCFileOperations.save_config_to_file(config_json, filename)
-            
+
         @tool
         def save_results_to_file(content: str, filename: str) -> str:
             """Save content to a file with specified extension (txt, vm, md).
-            
+
             Args:
                 content: Content to save to the file
                 filename: Name of the file to save the content to (defaults to .txt extension if none provided)
-            
+
             Notes:
                 When an SFC configuration is running, this will save the file both to the
                 central storage directory (.sfc/stored_results) and to the current run directory.
             """
-            return SFCFileOperations.save_results_to_file(content, filename, self.current_config_name)
+            return SFCFileOperations.save_results_to_file(
+                content, filename, self.current_config_name
+            )
 
         @tool
         def run_sfc_config_locally(config_json: str, config_name: str = "") -> str:
@@ -401,7 +408,12 @@ class SFCWizardAgent:
         for i in range(0, len(aws_targets), 3):
             print("   " + " | ".join(aws_targets[i : i + 3]))
         print()
-        print("Type 'exit' or 'quit' to end the session.")
+        print("💡 **How to use:**")
+        print("• Type your questions and press Enter")
+        print(
+            "• Hold Control key + press S key (Ctrl+S) during response generation to stop it"
+        )
+        print("• Type 'exit' or 'quit' to end the session")
         print()
 
     def _cleanup_processes(self):
@@ -424,6 +436,112 @@ class SFCWizardAgent:
         print(f"✅ Terminated {len(self.active_processes)} SFC processes")
         self.active_processes = []
 
+    def start_generation(self):
+        """Mark the start of a new generation."""
+        with self.generation_lock:
+            self.stop_event.clear()
+            self.is_generating = True
+
+    def stop_generation(self):
+        """Stop the current generation/processing and clean up."""
+        with self.generation_lock:
+            if self.is_generating:
+                self.stop_event.set()
+                self.is_generating = False
+
+                # Stop any active log tail threads
+                if (
+                    hasattr(self, "log_tail_thread")
+                    and self.log_tail_thread
+                    and self.log_tail_thread.is_alive()
+                ):
+                    self.log_tail_stop_event.set()
+                    try:
+                        self.log_tail_thread.join(timeout=1)
+                    except:
+                        pass
+
+                # Clean up any active processes
+                self._cleanup_processes()
+
+                return True
+            else:
+                return False
+
+    def reset_for_new_request(self):
+        """Reset agent state to be ready for new requests."""
+        with self.generation_lock:
+            self.is_generating = False
+            self.stop_event.clear()
+
+    def is_stopped(self):
+        """Check if generation has been stopped."""
+        return self.stop_event.is_set()
+
+    def _process_with_stop_capability(self, user_input):
+        """Process user input with ability to stop using Ctrl+S"""
+        import signal
+
+        response = None
+        agent_thread = None
+
+        def signal_handler(signum, frame):
+            """Handle Ctrl+S signal to stop generation"""
+            if self.is_generating:
+                print(f"\n🛑 Generation stopped by user!")
+                self.stop_generation()
+
+        try:
+            # Set up signal handler for Ctrl+S (SIGTSTP equivalent)
+            original_handler = signal.signal(signal.SIGTSTP, signal_handler)
+
+            print(f"\n🤖 Processing your request... (Ctrl+S to stop)")
+
+            # Mark generation start
+            self.start_generation()
+
+            # Run agent in background thread
+            def run_agent():
+                nonlocal response
+                try:
+                    response = self.agent(user_input)
+                except Exception as e:
+                    response = f"❌ Error processing request: {str(e)}"
+
+            agent_thread = threading.Thread(target=run_agent)
+            agent_thread.daemon = True
+            agent_thread.start()
+
+            # Monitor for completion or stop
+            while agent_thread.is_alive() and not self.is_stopped():
+                agent_thread.join(timeout=0.1)
+
+            if self.is_stopped():
+                print("🛑 Generation stopped. You can continue with a new question.\n")
+            else:
+                # Record successful conversation
+                if response and not isinstance(response, str):
+                    self.prompt_logger.add_entry(user_input, response)
+                print(f"\n")
+
+        except KeyboardInterrupt:
+            # Handle Ctrl+C
+            print(f"\n🛑 Generation stopped by user!")
+            self.stop_generation()
+            print("You can continue with a new question.\n")
+        except Exception as e:
+            print(f"\n❌ Error processing request: {str(e)}")
+            print("Please try rephrasing your question or check your configuration.\n")
+        finally:
+            # Restore original signal handler
+            try:
+                signal.signal(signal.SIGTSTP, original_handler)
+            except:
+                pass
+            # Always reset generation state
+            self.is_generating = False
+            self.stop_event.clear()
+
     def run(self):
         """Main interaction loop"""
         self.boot()
@@ -443,19 +561,8 @@ class SFCWizardAgent:
                     if not user_input:
                         continue
 
-                    # Process with Strands agent
-                    try:
-                        response = self.agent(user_input)
-                        # Record the conversation in the prompt logger
-                        self.prompt_logger.add_entry(user_input, response)
-                        print(f"\n")
-                        # Don't print response here as stdio_mcp_client already prints it
-                        # print(f"\n{response}\n")
-                    except Exception as e:
-                        print(f"\n❌ Error processing request: {str(e)}")
-                        print(
-                            "Please try rephrasing your question or check your configuration.\n"
-                        )
+                    # Process with Strands agent in a threaded way to allow stop commands
+                    self._process_with_stop_capability(user_input)
 
                 except KeyboardInterrupt:
                     print("\n\n🏭 SFC Wizard session interrupted. Goodbye!")

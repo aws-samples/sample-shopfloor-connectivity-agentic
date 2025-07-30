@@ -81,9 +81,11 @@ class SFCFileOperations:
             return "❌ Invalid JSON configuration provided"
         except Exception as e:
             return f"❌ Error saving configuration: {str(e)}"
-            
+
     @staticmethod
-    def save_results_to_file(content: str, filename: str, current_config_name: str = None) -> str:
+    def save_results_to_file(
+        content: str, filename: str, current_config_name: str = None
+    ) -> str:
         """Save content to a file with specified extension
 
         Args:
@@ -98,32 +100,32 @@ class SFCFileOperations:
             # List of allowed file extensions
             allowed_extensions = ["txt", "vm", "md"]
             default_extension = "txt"
-            
+
             # Check if filename has an extension
             has_extension = False
             for ext in allowed_extensions:
                 if filename.lower().endswith(f".{ext}"):
                     has_extension = True
                     break
-                    
+
             # Add default extension if no valid extension is provided
             if not has_extension:
                 filename += f".{default_extension}"
-            
+
             # Get base filename (without path)
             base_filename = os.path.basename(filename)
-            
+
             # Create the stored_results directory if it doesn't exist
             storage_dir = ".sfc/stored_results"
             os.makedirs(storage_dir, exist_ok=True)
-            
+
             # Create the full path for the main storage directory
             full_path = os.path.join(storage_dir, base_filename)
-            
+
             # Write to file in the main storage directory
             with open(full_path, "w") as file:
                 file.write(content)
-            
+
             # Save additional copy in the current run directory if provided
             run_path = None
             if current_config_name:
@@ -132,7 +134,7 @@ class SFCFileOperations:
                     run_path = os.path.join(run_dir, base_filename)
                     with open(run_path, "w") as file:
                         file.write(content)
-            
+
             # Prepare the result message
             if run_path:
                 return f"✅ Results saved successfully to:\n- '{full_path}'\n- '{run_path}'"
