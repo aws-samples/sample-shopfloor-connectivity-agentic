@@ -2223,6 +2223,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "strands-agents" },
     { name = "strands-agents-tools" },
+    { name = "watchdog" },
 ]
 
 [package.optional-dependencies]
@@ -2250,6 +2251,7 @@ requires-dist = [
     { name = "python-dotenv" },
     { name = "strands-agents" },
     { name = "strands-agents-tools" },
+    { name = "watchdog", specifier = ">=3.0.0" },
 ]
 provides-extras = ["dev"]
 

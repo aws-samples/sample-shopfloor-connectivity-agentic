@@ -23,6 +23,7 @@ import threading
 import asyncio
 
 from .agent import SFCWizardAgent, stdio_mcp_client
+from .tools.file_explorer import SFCFileExplorer
 
 
 class StreamingOutputCapture:
@@ -100,6 +101,9 @@ class ChatUI:
         self.sfc_agent = None
         self.agent_ready = False
         
+        # File Explorer for .sfc directory
+        self.file_explorer = None
+        
         # Shared interrupt state for sessions
         self.session_interrupt_flags: Dict[str, bool] = {}
         self.session_streaming_tasks: Dict[str, asyncio.Task] = {}
@@ -118,6 +122,11 @@ class ChatUI:
             self.sfc_agent = SFCWizardAgent()
             self.agent_ready = True
             print("✅ SFC Wizard Agent initialized with MCP tools")
+        
+        # Initialize file explorer with SocketIO for real-time updates
+        if self.file_explorer is None:
+            self.file_explorer = SFCFileExplorer(socketio=self.socketio, logger=self.logger)
+            print("✅ SFC File Explorer initialized with monitoring")
 
     def _cleanup_async_tasks(self):
         """Clean up any pending asyncio tasks to prevent the 'Task was destroyed but it is pending' error."""
@@ -173,6 +182,10 @@ class ChatUI:
             
         except Exception as e:
             self.logger.error(f"Error during async task cleanup: {e}")
+        
+        # Stop file system monitoring
+        if self.file_explorer:
+            self.file_explorer.stop_monitoring()
 
     def _signal_handler(self, signum, frame):
         """Handle SIGINT (Ctrl+C) signal for clean shutdown."""
@@ -180,6 +193,8 @@ class ChatUI:
         self._cleanup_async_tasks()
         if self.sfc_agent:
             self.sfc_agent._cleanup_processes()
+        if self.file_explorer:
+            self.file_explorer.stop_monitoring()
         # Exit gracefully
         os._exit(0)
 
@@ -250,6 +265,124 @@ class ChatUI:
                 return jsonify({"status": "ready", "agent": "initialized"})
             else:
                 return jsonify({"status": "not_ready", "agent": "initializing"}), 503
+
+        # File Explorer API Endpoints
+        @self.app.route("/api/files/tree")
+        def get_file_tree():
+            """Get the .sfc directory tree structure."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            path = request.args.get('path', '')
+            depth = int(request.args.get('depth', 2))
+            
+            try:
+                tree = self.file_explorer.get_file_tree(path, depth)
+                return jsonify(tree)
+            except Exception as e:
+                self.logger.error(f"Error getting file tree: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/files/content")
+        def get_file_content():
+            """Get file content with optional pagination."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            path = request.args.get('path')
+            if not path:
+                return jsonify({"error": "Path parameter required"}), 400
+            
+            offset = int(request.args.get('offset', 0))
+            limit = request.args.get('limit')
+            if limit:
+                limit = int(limit)
+            
+            try:
+                content = self.file_explorer.get_file_content(path, offset, limit)
+                return jsonify(content)
+            except Exception as e:
+                self.logger.error(f"Error getting file content: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/files/create", methods=['POST'])
+        def create_file():
+            """Create a new file."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "JSON data required"}), 400
+            
+            path = data.get('path')
+            file_type = data.get('type')
+            content = data.get('content')
+            
+            if not path or not file_type:
+                return jsonify({"error": "Path and type parameters required"}), 400
+            
+            if file_type not in ['json', 'markdown']:
+                return jsonify({"error": "Unsupported file type. Use 'json' or 'markdown'"}), 400
+            
+            try:
+                result = self.file_explorer.create_file(path, file_type, content)
+                if 'error' in result:
+                    return jsonify(result), 400
+                return jsonify(result)
+            except Exception as e:
+                self.logger.error(f"Error creating file: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/files/save", methods=['PUT'])
+        def save_file():
+            """Save file content."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "JSON data required"}), 400
+            
+            path = data.get('path')
+            content = data.get('content')
+            
+            if not path or content is None:
+                return jsonify({"error": "Path and content parameters required"}), 400
+            
+            try:
+                result = self.file_explorer.save_file(path, content)
+                if 'error' in result:
+                    return jsonify(result), 400
+                return jsonify(result)
+            except Exception as e:
+                self.logger.error(f"Error saving file: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @self.app.route("/api/files/delete", methods=['DELETE'])
+        def delete_file():
+            """Delete a file or directory."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "JSON data required"}), 400
+            
+            path = data.get('path')
+            recursive = data.get('recursive', False)
+            
+            if not path:
+                return jsonify({"error": "Path parameter required"}), 400
+            
+            try:
+                result = self.file_explorer.delete_file(path, recursive)
+                if 'error' in result:
+                    return jsonify(result), 400
+                return jsonify(result)
+            except Exception as e:
+                self.logger.error(f"Error deleting file: {e}")
+                return jsonify({"error": str(e)}), 500
 
     def _setup_socket_handlers(self):
         """Setup SocketIO event handlers."""
@@ -734,6 +867,8 @@ What would you like to do today?"""
             self._cleanup_async_tasks()
             if self.sfc_agent:
                 self.sfc_agent._cleanup_processes()
+            if self.file_explorer:
+                self.file_explorer.stop_monitoring()
 
 
 def main():
