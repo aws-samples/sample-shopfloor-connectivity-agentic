@@ -14,9 +14,44 @@ from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 import threading
 import time
+from dataclasses import dataclass, asdict
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+
+@dataclass
+class FileNode:
+    """Data model for file tree nodes."""
+    name: str
+    path: str
+    type: str  # 'file' or 'directory'
+    size: Optional[int] = None
+    modified: str = ""
+    children: Optional[List['FileNode']] = None
+    expanded: bool = False
+    purpose: Optional[str] = None
+    editable: bool = False
+    child_count: Optional[int] = None
+    error: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert FileNode to dictionary for JSON serialization."""
+        result = asdict(self)
+        # Convert children to dictionaries recursively
+        if self.children:
+            result['children'] = [child.to_dict() for child in self.children]
+        # Remove None values to keep JSON clean
+        return {k: v for k, v in result.items() if v is not None}
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'FileNode':
+        """Create FileNode from dictionary."""
+        children_data = data.pop('children', None)
+        node = cls(**data)
+        if children_data:
+            node.children = [cls.from_dict(child) for child in children_data]
+        return node
 
 
 class SFCFileSystemHandler(FileSystemEventHandler):
@@ -98,7 +133,7 @@ class SFCFileExplorer:
         # Ensure .sfc directory exists
         self.sfc_root.mkdir(exist_ok=True)
         
-        # File type mappings
+        # File type mappings for extension-based detection
         self.file_types = {
             '.json': 'config',
             '.log': 'log', 
@@ -106,7 +141,32 @@ class SFCFileExplorer:
             '.txt': 'text',
             '.vm': 'template',
             '.jar': 'module',
-            '.tar.gz': 'archive'
+            '.tar.gz': 'archive',
+            '.gz': 'archive',
+            '.zip': 'archive',
+            '.yaml': 'config',
+            '.yml': 'config',
+            '.xml': 'config',
+            '.properties': 'config',
+            '.conf': 'config',
+            '.cfg': 'config',
+            '.ini': 'config',
+            '.csv': 'data',
+            '.tsv': 'data',
+            '.parquet': 'data',
+            '.avro': 'data'
+        }
+        
+        # Path-based purpose detection patterns
+        self.path_patterns = {
+            'stored_configs': 'config',
+            'stored_results': 'result', 
+            'runs': 'run_data',
+            'logs': 'log',
+            'data': 'data',
+            'modules': 'module',
+            'bin': 'executable',
+            'lib': 'library'
         }
         
         # Editable file extensions
@@ -150,18 +210,19 @@ class SFCFileExplorer:
     def _validate_path(self, path: str) -> Path:
         """Validate and resolve path to ensure it's within .sfc directory."""
         try:
-            # Convert to Path object and resolve
-            requested_path = Path(path).resolve()
+            # Handle empty path (root)
+            if not path or path == ".":
+                return self.sfc_root
             
-            # Ensure the path is within .sfc directory
-            if not str(requested_path).startswith(str(self.sfc_root)):
-                # Try relative to .sfc root
-                requested_path = (self.sfc_root / path).resolve()
-                
-                # Double-check it's still within .sfc
-                if not str(requested_path).startswith(str(self.sfc_root)):
-                    raise ValueError(f"Path outside .sfc directory: {path}")
+            # Prevent path traversal attacks
+            if '..' in path or path.startswith('/'):
+                raise ValueError(f"Invalid path: {path}")
             
+            # Always treat as relative to .sfc root
+            requested_path = self.sfc_root / path
+            
+            # Check if the path exists or could exist within sfc_root
+            # We don't resolve here to avoid symlink issues
             return requested_path
             
         except Exception as e:
@@ -170,57 +231,84 @@ class SFCFileExplorer:
     def _get_file_purpose(self, file_path: Path) -> str:
         """Determine the purpose of a file based on its location and extension."""
         path_str = str(file_path.relative_to(self.sfc_root))
+        path_parts = path_str.split('/')
         
-        if 'stored_configs' in path_str:
-            return 'config'
-        elif 'stored_results' in path_str:
-            return 'result'
-        elif 'runs' in path_str and 'logs' in path_str:
+        # Check for specific path combinations first (most specific)
+        if 'runs' in path_parts and 'logs' in path_parts:
             return 'log'
-        elif 'runs' in path_str and 'data' in path_str:
+        elif 'runs' in path_parts and 'data' in path_parts:
             return 'data'
-        elif 'modules' in path_str:
-            return 'module'
-        else:
-            # Fallback to extension-based detection
-            return self.file_types.get(file_path.suffix.lower(), 'unknown')
+        
+        # Check for special file names
+        filename_lower = file_path.name.lower()
+        if filename_lower.startswith('config'):
+            return 'config'
+        elif filename_lower.endswith('.log'):
+            return 'log'
+        elif filename_lower in ['readme.md', 'readme.txt']:
+            return 'documentation'
+        
+        # Check path-based patterns (less specific)
+        for part in path_parts:
+            if part in self.path_patterns:
+                return self.path_patterns[part]
+        
+        # Fallback to extension-based detection
+        extension = file_path.suffix.lower()
+        if extension == '.gz' and file_path.name.endswith('.tar.gz'):
+            extension = '.tar.gz'
+        
+        return self.file_types.get(extension, 'unknown')
     
-    def _get_file_metadata(self, file_path: Path) -> Dict[str, Any]:
-        """Get metadata for a file or directory."""
+    def _get_file_metadata(self, file_path: Path) -> FileNode:
+        """Get metadata for a file or directory as a FileNode object."""
         try:
             stat = file_path.stat()
             relative_path = str(file_path.relative_to(self.sfc_root))
+            is_directory = file_path.is_dir()
+            is_file = file_path.is_file()
             
-            metadata = {
-                'name': file_path.name,
-                'path': relative_path,
-                'type': 'directory' if file_path.is_dir() else 'file',
-                'size': stat.st_size if file_path.is_file() else None,
-                'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                'purpose': self._get_file_purpose(file_path) if file_path.is_file() else None,
-                'editable': file_path.suffix.lower() in self.editable_extensions if file_path.is_file() else False
-            }
+            # Create FileNode with basic information
+            node = FileNode(
+                name=file_path.name,
+                path=relative_path,
+                type='directory' if is_directory else 'file',
+                size=stat.st_size if is_file else None,
+                modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                purpose=self._get_file_purpose(file_path) if is_file else None,
+                editable=file_path.suffix.lower() in self.editable_extensions if is_file else False
+            )
             
             # Add child count for directories
-            if file_path.is_dir():
+            if is_directory:
                 try:
-                    metadata['child_count'] = len(list(file_path.iterdir()))
+                    node.child_count = len(list(file_path.iterdir()))
                 except PermissionError:
-                    metadata['child_count'] = 0
+                    node.child_count = 0
+                    node.error = 'Permission denied'
             
-            return metadata
+            return node
             
         except Exception as e:
-            self.logger.error(f"Error getting metadata for {file_path}: {e}")
-            return {
-                'name': file_path.name,
-                'path': str(file_path.relative_to(self.sfc_root)),
-                'type': 'directory' if file_path.is_dir() else 'file',
-                'error': str(e)
-            }
+            if self.logger:
+                self.logger.error(f"Error getting metadata for {file_path}: {e}")
+            return FileNode(
+                name=file_path.name,
+                path=str(file_path.relative_to(self.sfc_root)),
+                type='directory' if file_path.is_dir() else 'file',
+                error=str(e)
+            )
     
     def get_file_tree(self, path: str = "", depth: int = 2) -> Dict[str, Any]:
-        """Get the file tree structure for the specified path."""
+        """Get the file tree structure for the specified path.
+        
+        Args:
+            path: Relative path within .sfc directory (empty for root)
+            depth: Maximum depth to traverse (0 = no children, 1 = immediate children only)
+        
+        Returns:
+            Dictionary representation of FileNode tree or error
+        """
         try:
             if not path:
                 target_path = self.sfc_root
@@ -230,30 +318,125 @@ class SFCFileExplorer:
             if not target_path.exists():
                 return {'error': f'Path does not exist: {path}'}
             
-            def build_tree(current_path: Path, current_depth: int) -> Dict[str, Any]:
-                """Recursively build the file tree."""
-                metadata = self._get_file_metadata(current_path)
+            def build_tree(current_path: Path, current_depth: int) -> FileNode:
+                """Recursively build the file tree using FileNode objects."""
+                node = self._get_file_metadata(current_path)
                 
+                # Only load children if we have depth remaining and it's a directory
                 if current_path.is_dir() and current_depth > 0:
                     children = []
                     try:
-                        for child in sorted(current_path.iterdir(), key=lambda x: (x.is_file(), x.name.lower())):
-                            child_tree = build_tree(child, current_depth - 1)
-                            children.append(child_tree)
-                        metadata['children'] = children
+                        # Sort directories first, then files, both alphabetically
+                        sorted_children = sorted(
+                            current_path.iterdir(), 
+                            key=lambda x: (x.is_file(), x.name.lower())
+                        )
+                        
+                        for child in sorted_children:
+                            try:
+                                child_node = build_tree(child, current_depth - 1)
+                                children.append(child_node)
+                            except Exception as child_error:
+                                # Create error node for inaccessible children
+                                error_node = FileNode(
+                                    name=child.name,
+                                    path=str(child.relative_to(self.sfc_root)),
+                                    type='directory' if child.is_dir() else 'file',
+                                    error=str(child_error)
+                                )
+                                children.append(error_node)
+                        
+                        node.children = children
+                        node.expanded = True  # Mark as expanded since we loaded children
+                        
                     except PermissionError:
-                        metadata['children'] = []
-                        metadata['error'] = 'Permission denied'
+                        node.children = []
+                        node.error = 'Permission denied'
+                        node.expanded = False
+                    except Exception as e:
+                        node.children = []
+                        node.error = f'Error reading directory: {str(e)}'
+                        node.expanded = False
+                elif current_path.is_dir():
+                    # Directory but no depth remaining - mark as not expanded
+                    node.expanded = False
                 
-                return metadata
+                return node
             
-            return build_tree(target_path, depth)
+            root_node = build_tree(target_path, depth)
+            return root_node.to_dict()
             
         except ValueError as e:
             return {'error': str(e)}
         except Exception as e:
-            self.logger.error(f"Error building file tree: {e}")
+            if self.logger:
+                self.logger.error(f"Error building file tree: {e}")
             return {'error': f'Failed to build file tree: {str(e)}'}
+    
+    def get_directory_children(self, path: str, depth: int = 1) -> Dict[str, Any]:
+        """Get children of a specific directory for lazy loading.
+        
+        Args:
+            path: Relative path to directory within .sfc
+            depth: Depth to load (usually 1 for lazy loading)
+        
+        Returns:
+            Dictionary with children array or error
+        """
+        try:
+            target_path = self._validate_path(path)
+            
+            if not target_path.exists():
+                return {'error': f'Directory does not exist: {path}'}
+            
+            if not target_path.is_dir():
+                return {'error': f'Path is not a directory: {path}'}
+            
+            children = []
+            try:
+                sorted_children = sorted(
+                    target_path.iterdir(),
+                    key=lambda x: (x.is_file(), x.name.lower())
+                )
+                
+                for child in sorted_children:
+                    try:
+                        child_node = self._get_file_metadata(child)
+                        
+                        # If it's a directory and we have depth, load its children too
+                        if child.is_dir() and depth > 1:
+                            grandchildren = []
+                            try:
+                                for grandchild in sorted(child.iterdir(), key=lambda x: (x.is_file(), x.name.lower())):
+                                    grandchild_node = self._get_file_metadata(grandchild)
+                                    grandchildren.append(grandchild_node)
+                                child_node.children = grandchildren
+                                child_node.expanded = True
+                            except PermissionError:
+                                child_node.error = 'Permission denied'
+                        
+                        children.append(child_node.to_dict())
+                        
+                    except Exception as child_error:
+                        error_node = FileNode(
+                            name=child.name,
+                            path=str(child.relative_to(self.sfc_root)),
+                            type='directory' if child.is_dir() else 'file',
+                            error=str(child_error)
+                        )
+                        children.append(error_node.to_dict())
+                
+                return {'children': children}
+                
+            except PermissionError:
+                return {'error': 'Permission denied accessing directory'}
+            
+        except ValueError as e:
+            return {'error': str(e)}
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error getting directory children: {e}")
+            return {'error': f'Failed to get directory children: {str(e)}'}
     
     def get_file_content(self, path: str, offset: int = 0, limit: int = None) -> Dict[str, Any]:
         """Get the content of a file with optional pagination."""
@@ -296,12 +479,12 @@ class SFCFileExplorer:
                     'path': path,
                     'content': content,
                     'size': file_size,
-                    'modified': metadata['modified'],
+                    'modified': metadata.modified,
                     'mime_type': mime_type,
                     'encoding': 'utf-8',
                     'truncated': truncated,
                     'editable': file_path.suffix.lower() in self.editable_extensions,
-                    'purpose': metadata['purpose']
+                    'purpose': metadata.purpose
                 }
                 
             except UnicodeDecodeError:
@@ -310,7 +493,8 @@ class SFCFileExplorer:
         except ValueError as e:
             return {'error': str(e)}
         except Exception as e:
-            self.logger.error(f"Error reading file content: {e}")
+            if self.logger:
+                self.logger.error(f"Error reading file content: {e}")
             return {'error': f'Failed to read file: {str(e)}'}
     
     def create_file(self, path: str, file_type: str, content: str = None) -> Dict[str, Any]:
@@ -352,13 +536,14 @@ class SFCFileExplorer:
             return {
                 'success': True,
                 'message': f'File created successfully: {file_path.relative_to(self.sfc_root)}',
-                'file': metadata
+                'file': metadata.to_dict()
             }
             
         except ValueError as e:
             return {'error': str(e)}
         except Exception as e:
-            self.logger.error(f"Error creating file: {e}")
+            if self.logger:
+                self.logger.error(f"Error creating file: {e}")
             return {'error': f'Failed to create file: {str(e)}'}
     
     def save_file(self, path: str, content: str) -> Dict[str, Any]:
@@ -393,8 +578,19 @@ class SFCFileExplorer:
                 lines = content.split('\n')
                 for i, line in enumerate(lines, 1):
                     # Check for potential issues (this is basic validation)
-                    if line.strip().startswith('#') and not line.startswith('# ') and len(line) > 1:
-                        validation_errors.append(f'Line {i}: Missing space after # in heading')
+                    stripped = line.strip()
+                    if stripped.startswith('#') and len(stripped) > 1:
+                        # Find the end of the hash sequence
+                        hash_count = 0
+                        for char in stripped:
+                            if char == '#':
+                                hash_count += 1
+                            else:
+                                break
+                        
+                        # Check if there's a space after the hashes
+                        if hash_count < len(stripped) and stripped[hash_count] != ' ':
+                            validation_errors.append(f'Line {i}: Missing space after # in heading')
             
             if validation_errors:
                 return {
@@ -409,7 +605,8 @@ class SFCFileExplorer:
                     import shutil
                     shutil.copy2(file_path, backup_path)
             except Exception as e:
-                self.logger.warning(f"Could not create backup: {e}")
+                if self.logger:
+                    self.logger.warning(f"Could not create backup: {e}")
             
             # Save the file atomically
             temp_path = file_path.with_suffix(file_path.suffix + '.tmp')
@@ -439,13 +636,14 @@ class SFCFileExplorer:
             return {
                 'success': True,
                 'message': f'File saved successfully: {file_path.relative_to(self.sfc_root)}',
-                'file': metadata
+                'file': metadata.to_dict()
             }
             
         except ValueError as e:
             return {'error': str(e)}
         except Exception as e:
-            self.logger.error(f"Error saving file: {e}")
+            if self.logger:
+                self.logger.error(f"Error saving file: {e}")
             return {'error': f'Failed to save file: {str(e)}'}
     
     def delete_file(self, path: str, recursive: bool = False) -> Dict[str, Any]:
@@ -482,5 +680,6 @@ class SFCFileExplorer:
         except ValueError as e:
             return {'error': str(e)}
         except Exception as e:
-            self.logger.error(f"Error deleting path: {e}")
+            if self.logger:
+                self.logger.error(f"Error deleting path: {e}")
             return {'error': f'Failed to delete: {str(e)}'}

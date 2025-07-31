@@ -283,6 +283,25 @@ class ChatUI:
                 self.logger.error(f"Error getting file tree: {e}")
                 return jsonify({"error": str(e)}), 500
 
+        @self.app.route("/api/files/children")
+        def get_directory_children():
+            """Get children of a specific directory for lazy loading."""
+            if not self.file_explorer:
+                return jsonify({"error": "File explorer not initialized"}), 503
+            
+            path = request.args.get('path')
+            if not path:
+                return jsonify({"error": "Path parameter required"}), 400
+            
+            depth = int(request.args.get('depth', 1))
+            
+            try:
+                children = self.file_explorer.get_directory_children(path, depth)
+                return jsonify(children)
+            except Exception as e:
+                self.logger.error(f"Error getting directory children: {e}")
+                return jsonify({"error": str(e)}), 500
+
         @self.app.route("/api/files/content")
         def get_file_content():
             """Get file content with optional pagination."""
