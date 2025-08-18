@@ -8,14 +8,22 @@ Specialized assistant for debugging, creating, and testing SFC configurations.
 
 import sys
 import os
-import json
 import threading
 import queue
 import inspect
-import html
 import asyncio
 import signal
+import json
+from pathlib import Path
 from dotenv import load_dotenv
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
+
+    BOTO3_AVAILABLE = True
+except ImportError:
+    BOTO3_AVAILABLE = False
 
 # Import the externalized functions
 from sfc_wizard.tools.file_operations import SFCFileOperations
@@ -26,8 +34,30 @@ from sfc_wizard.tools.sfc_visualization import visualize_file_target_data
 from sfc_wizard.tools.prompt_logger import PromptLogger
 from sfc_wizard.tools.sfc_knowledge import load_sfc_knowledge
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from .env file (only once per process)
+_env_loaded = False
+if not _env_loaded:
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        print(f"✅ Loaded environment variables from {env_path}")
+        _env_loaded = True
+    else:
+        # Try to load from repo root
+        repo_env_path = Path(__file__).parent.parent.parent.parent / ".env"
+        if repo_env_path.exists():
+            load_dotenv(dotenv_path=repo_env_path)
+            print(f"✅ Loaded environment variables from {repo_env_path}")
+            _env_loaded = True
+        else:
+            print("ℹ️ No .env file found, using default environment variables")
+            _env_loaded = True
+
+# Global AWS Bedrock configuration - configure once, use everywhere
+AWS_BEDROCK_MODEL_ID = os.getenv(
+    "BEDROCK_MODEL_ID", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+)
+AWS_BEDROCK_REGION = os.getenv("BEDROCK_REGION", "us-west-2")
 
 try:
     from strands import Agent, tool
@@ -68,6 +98,289 @@ def _create_mcp_client():
 
 
 stdio_mcp_client = _create_mcp_client()
+
+
+def _get_test_payload_for_model(model_id: str) -> dict:
+    """Get appropriate test payload based on model provider.
+
+    Args:
+        model_id: The Bedrock model ID
+
+    Returns:
+        Dictionary containing the test payload for the specific model type
+    """
+    model_lower = model_id.lower()
+
+    if "anthropic" in model_lower or "claude" in model_lower:
+        # Anthropic Claude models - use standard API version for all Claude models
+        # The bedrock-2023-05-31 API version is more widely supported
+        return {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}],
+        }
+    elif "titan" in model_lower:
+        # Amazon Titan Text models
+        return {
+            "inputText": "Hi",
+            "textGenerationConfig": {
+                "maxTokenCount": 1,
+                "temperature": 0,
+                "topP": 1,
+                "stopSequences": [],
+            },
+        }
+    elif "llama" in model_lower or "meta" in model_lower:
+        # Meta Llama models
+        return {"prompt": "Hi", "max_gen_len": 1, "temperature": 0.1, "top_p": 0.9}
+    elif "ai21" in model_lower or "j2" in model_lower or "jamba" in model_lower:
+        # AI21 Labs models
+        return {"prompt": "Hi", "maxTokens": 1, "temperature": 0}
+    elif "cohere" in model_lower:
+        # Cohere Command models
+        return {"prompt": "Hi", "max_tokens": 1, "temperature": 0}
+    elif "mistral" in model_lower:
+        # Mistral models
+        return {"prompt": "Hi", "max_tokens": 1, "temperature": 0}
+    else:
+        # Generic fallback - use Anthropic format as it's most common
+        return {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}],
+        }
+
+
+def _validate_bedrock_service_access(
+    session: boto3.Session, region: str, model_id: str
+) -> tuple[bool, str]:
+    """Validate access to Bedrock service and specific model.
+
+    Args:
+        session: Boto3 session
+        region: AWS region
+        model_id: Bedrock model ID
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    try:
+        bedrock_client = session.client("bedrock", region_name=region)
+
+        # Check if this is a cross-region model (starts with region prefix like "us.")
+        is_cross_region = "." in model_id and model_id.split(".")[0] in [
+            "us",
+            "eu",
+            "ap",
+            "ca",
+            "sa",
+            "af",
+            "me",
+        ]
+
+        # For cross-region models, strip the region prefix for availability check
+        check_model_id = model_id
+        if is_cross_region:
+            # Remove the region prefix (e.g., "us." from "us.anthropic.claude-3-7-sonnet-20250219-v1:0")
+            check_model_id = ".".join(model_id.split(".")[1:])
+            print(f"ℹ️  Detected cross-region model access: {model_id}")
+            print(f"   Checking availability for base model: {check_model_id}")
+
+        # Check general Bedrock access by listing foundation models
+        try:
+            # Try to list models for the provider of the configured model
+            provider = "anthropic"  # Default to anthropic
+            if "titan" in model_id.lower():
+                provider = "amazon"
+            elif "llama" in model_id.lower() or "meta" in model_id.lower():
+                provider = "meta"
+            elif "ai21" in model_id.lower() or "j2" in model_id.lower():
+                provider = "ai21"
+            elif "cohere" in model_id.lower():
+                provider = "cohere"
+            elif "mistral" in model_id.lower():
+                provider = "mistral"
+
+            models_response = bedrock_client.list_foundation_models(byProvider=provider)
+            available_models = [
+                model["modelId"] for model in models_response.get("modelSummaries", [])
+            ]
+
+            if check_model_id not in available_models:
+                return (
+                    False,
+                    f"❌ AWS Credentials Error: Configured model '{model_id}' is not available in region {region}.\n"
+                    f"   Available {provider.title()} models: {', '.join(available_models[:3])}{'...' if len(available_models) > 3 else ''}\n"
+                    "   Please check:\n"
+                    "   • Your BEDROCK_MODEL_ID environment variable (configured in .env file or system environment)\n"
+                    "   • Model availability in your region\n"
+                    "   • Your account has access to this specific model"
+                    + (
+                        f"\n   • Base model '{check_model_id}' should be available for cross-region access"
+                        if is_cross_region
+                        else ""
+                    ),
+                )
+
+        except ClientError as list_error:
+            # If we can't list models, we might still be able to invoke the specific model
+            print(f"⚠️  Warning: Could not list foundation models: {list_error}")
+
+        return (True, "")
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code in ["UnauthorizedOperation", "AccessDenied"]:
+            return (
+                False,
+                f"❌ AWS Credentials Error: Access denied to AWS Bedrock in region {region} "
+                f"(BEDROCK_REGION={region} from .env file or system environment). Please ensure:\n"
+                "   • Your AWS credentials have Bedrock permissions\n"
+                "   • Bedrock is available in your region\n"
+                "   • Your account has access to foundation models in Bedrock",
+            )
+        elif error_code == "InvalidUserID.NotFound":
+            return (
+                False,
+                "❌ AWS Credentials Error: Invalid AWS credentials. Please check your access key and secret key.",
+            )
+        else:
+            return (False, f"❌ AWS Credentials Error: {str(e)}")
+    except Exception as e:
+        if "Could not connect to the endpoint URL" in str(e):
+            return (
+                False,
+                f"❌ AWS Credentials Error: Bedrock service not available in region {region} "
+                f"(BEDROCK_REGION={region} from .env file or system environment). "
+                "Please use a region where Bedrock is available (e.g., us-west-2, us-east-1).",
+            )
+        return (
+            False,
+            f"❌ AWS Credentials Error: Failed to connect to AWS Bedrock: {str(e)}",
+        )
+
+
+def _test_model_invocation(
+    session: boto3.Session, region: str, model_id: str
+) -> tuple[bool, str]:
+    """Test actual model invocation to verify access.
+
+    Args:
+        session: Boto3 session
+        region: AWS region
+        model_id: Bedrock model ID
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    try:
+        bedrock_runtime = session.client("bedrock-runtime", region_name=region)
+
+        # Get model-specific test payload
+        test_payload = _get_test_payload_for_model(model_id)
+
+        # Make a minimal test call to verify model access
+        bedrock_runtime.invoke_model(
+            modelId=model_id,
+            body=json.dumps(test_payload),
+            contentType="application/json",
+        )
+
+        return (
+            True,
+            f"✅ AWS credentials and model access validated successfully for '{model_id}'.",
+        )
+
+    except ClientError as model_error:
+        error_code = model_error.response["Error"]["Code"]
+        error_message = model_error.response["Error"]["Message"]
+        if error_code in ["AccessDeniedException", "UnauthorizedOperation"]:
+            return (
+                False,
+                f"❌ AWS Model Access Error: No access to model '{model_id}' in region {region}.\n"
+                "   Please ensure:\n"
+                "   • Your AWS account has access to this specific model\n"
+                "   • The model is enabled in your AWS Bedrock console\n"
+                "   • Your IAM permissions include bedrock:InvokeModel for this model",
+            )
+        elif error_code == "ValidationException":
+            return (
+                False,
+                f"❌ AWS Model Access Error: Invalid request for model '{model_id}'. "
+                f"{error_message}. "
+                "This may indicate the model payload format is incorrect or the model is not properly configured.",
+            )
+        elif error_code == "ResourceNotFoundException":
+            return (
+                False,
+                f"❌ AWS Model Access Error: Model '{model_id}' not found in region {region}. "
+                "Please check the model ID and ensure it's available in your region.",
+            )
+        else:
+            return (
+                False,
+                f"❌ AWS Model Access Error: Failed to access model '{model_id}': {str(model_error)}",
+            )
+    except Exception as model_test_error:
+        return (
+            False,
+            f"❌ AWS Model Access Error: Unable to test model '{model_id}' access: {str(model_test_error)}",
+        )
+
+
+def _validate_aws_credentials() -> tuple[bool, str]:
+    """Validate AWS credentials for Bedrock access.
+
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    if not BOTO3_AVAILABLE:
+        return (
+            False,
+            "❌ AWS Credentials Error: boto3 not available. Please install boto3 to use AWS Bedrock.",
+        )
+
+    try:
+        # Check if we have any AWS credentials configured
+        session = boto3.Session()
+        credentials = session.get_credentials()
+
+        if not credentials:
+            return (
+                False,
+                "❌ AWS Credentials Error: No AWS credentials found. Please configure AWS credentials using one of:\n"
+                "   • AWS CLI: aws configure\n"
+                "   • Environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY\n"
+                "   • IAM roles (if running on EC2)\n"
+                "   • AWS profiles in ~/.aws/credentials",
+            )
+
+        # Get region and model configuration
+        region = AWS_BEDROCK_REGION
+        model_id = AWS_BEDROCK_MODEL_ID
+
+        # Validate Bedrock service access
+        is_valid, error_msg = _validate_bedrock_service_access(
+            session, region, model_id
+        )
+        if not is_valid:
+            return (False, error_msg)
+
+        # Test actual model invocation
+        return _test_model_invocation(session, region, model_id)
+
+    except ProfileNotFound as e:
+        return (False, f"❌ AWS Credentials Error: AWS profile not found: {str(e)}")
+    except NoCredentialsError:
+        return (
+            False,
+            "❌ AWS Credentials Error: No AWS credentials found. Please configure AWS credentials.",
+        )
+    except Exception as e:
+        return (
+            False,
+            f"❌ AWS Credentials Error: Unexpected error validating credentials: {str(e)}",
+        )
 
 
 class color:
@@ -111,6 +424,11 @@ class SFCWizardAgent:
         # UI mode interrupt state - will be set by UI when interruption is requested
         self.ui_interrupt_session = (
             None  # Store the session ID that requested interrupt
+        )
+
+        # Validate AWS credentials during initialization
+        self.aws_credentials_valid, self.aws_credentials_error = (
+            _validate_aws_credentials()
         )
 
         # Initialize the Strands agent with SFC-specific tools
@@ -340,12 +658,10 @@ class SFCWizardAgent:
 
         # Create agent with SFC-specific tools
         try:
-            # Get model ID from environment variable with default value if not set
-            model_id = os.getenv(
-                "BEDROCK_MODEL_ID", "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+            # Use global Bedrock configuration
+            bedrock_model = BedrockModel(
+                model_id=AWS_BEDROCK_MODEL_ID, region_name=AWS_BEDROCK_REGION
             )
-            model_region = os.getenv("BEDROCK_REGION", "us-west-2")
-            bedrock_model = BedrockModel(model_id=model_id, region_name=model_region)
             agent_internal_tools = [
                 read_config_from_file,
                 save_config_to_file,
@@ -601,6 +917,22 @@ class SFCWizardAgent:
         print("=" * 43)
         print("Specialized assistant for industrial data connectivity to AWS")
         print()
+
+        # Display AWS credentials validation status
+        if self.aws_credentials_valid:
+            if not self.is_ui_mode:
+                print(
+                    f"{color.GREEN}✅ AWS Bedrock credentials validated successfully{color.END}"
+                )
+            else:
+                print("✅ AWS Bedrock credentials validated successfully")
+        else:
+            if not self.is_ui_mode:
+                print(f"{color.RED}{self.aws_credentials_error}{color.END}")
+            else:
+                print(self.aws_credentials_error)
+        print()
+
         if not self.is_ui_mode:
             print(
                 f"{color.YELLOW}⚡ NEW: Streaming responses with Ctrl+C interrupt capability!{color.END}"

@@ -9,7 +9,7 @@ Saves agent prompts and responses as markdown files.
 import os
 import re
 import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 

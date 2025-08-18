@@ -12,7 +12,7 @@ import threading
 import queue
 import select
 import sys
-from typing import List, Callable, Optional
+from typing import Optional
 
 
 class SFCLogOperations:

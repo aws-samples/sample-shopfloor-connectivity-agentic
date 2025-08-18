@@ -140,7 +140,7 @@ The UI uses the same environment variables as the original SFC Wizard, plus addi
 
 ```bash
 # Bedrock Model Configuration
-BEDROCK_MODEL_ID=eu.anthropic.claude-3-7-sonnet-20250219-v1:0
+BEDROCK_MODEL_ID=us.anthropic.claude-3-7-sonnet-20250219-v1:0
 
 # MCP Server Configuration
 MCP_SERVER_COMMAND=uvx

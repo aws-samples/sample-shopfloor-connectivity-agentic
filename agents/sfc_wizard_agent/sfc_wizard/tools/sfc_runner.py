@@ -417,32 +417,38 @@ class SFCRunner:
             # Create runner shell scripts for Linux and Windows that can execute the config directly
             # Get relative paths from test_dir to modules_dir for the scripts
             rel_modules_dir = os.path.relpath(os.path.abspath(modules_dir), test_dir)
-            config_rel_path = "config.json"  # Config is in the test directory, so just the filename
-            
+            config_rel_path = (
+                "config.json"  # Config is in the test directory, so just the filename
+            )
+
             # Create Linux shell script
             linux_script_path = os.path.join(test_dir, "run_sfc.sh")
             with open(linux_script_path, "w") as sh_file:
                 sh_file.write("#!/bin/bash\n")
                 sh_file.write("# Auto-generated SFC runner script\n\n")
                 # Set environment variables
-                sh_file.write(f"export SFC_DEPLOYMENT_DIR=\"$(pwd)/{rel_modules_dir}\"\n")
-                sh_file.write(f"export MODULES_DIR=\"$(pwd)/{rel_modules_dir}\"\n\n")
+                sh_file.write(f'export SFC_DEPLOYMENT_DIR="$(pwd)/{rel_modules_dir}"\n')
+                sh_file.write(f'export MODULES_DIR="$(pwd)/{rel_modules_dir}"\n\n')
                 # Find JAR files
                 sh_file.write("# Build classpath dynamically\n")
-                sh_file.write("CLASSPATH=\"\"\n")
-                sh_file.write(f"for jar in $(pwd)/{rel_modules_dir}/sfc-main/lib/*.jar; do\n")
-                sh_file.write("  if [ -z \"$CLASSPATH\" ]; then\n")
-                sh_file.write("    CLASSPATH=\"$jar\"\n")
+                sh_file.write('CLASSPATH=""\n')
+                sh_file.write(
+                    f"for jar in $(pwd)/{rel_modules_dir}/sfc-main/lib/*.jar; do\n"
+                )
+                sh_file.write('  if [ -z "$CLASSPATH" ]; then\n')
+                sh_file.write('    CLASSPATH="$jar"\n')
                 sh_file.write("  else\n")
-                sh_file.write("    CLASSPATH=\"$CLASSPATH:$jar\"\n")
+                sh_file.write('    CLASSPATH="$CLASSPATH:$jar"\n')
                 sh_file.write("  fi\n")
                 sh_file.write("done\n\n")
                 # Execute Java command
-                sh_file.write(f"java -cp \"$CLASSPATH\" com.amazonaws.sfc.MainController -config {config_rel_path} -trace\n")
-            
+                sh_file.write(
+                    f'java -cp "$CLASSPATH" com.amazonaws.sfc.MainController -config {config_rel_path} -trace\n'
+                )
+
             # Make the shell script executable
             os.chmod(linux_script_path, 0o755)
-            
+
             # Create Windows batch script
             windows_script_path = os.path.join(test_dir, "run_sfc.bat")
             with open(windows_script_path, "w") as bat_file:
@@ -451,13 +457,17 @@ class SFCRunner:
                 # Enable delayed expansion at the beginning
                 bat_file.write("setlocal EnableDelayedExpansion\n\n")
                 # Set environment variables
-                bat_file.write(f"set SFC_DEPLOYMENT_DIR={rel_modules_dir.replace('/', '\\')}\n")
-                bat_file.write(f"set MODULES_DIR={rel_modules_dir.replace('/', '\\')}\n\n")
+                windows_modules_dir = rel_modules_dir.replace("/", "\\")
+                bat_file.write(f"set SFC_DEPLOYMENT_DIR={windows_modules_dir}\n")
+                bat_file.write(f"set MODULES_DIR={windows_modules_dir}\n\n")
                 # Build classpath dynamically
                 bat_file.write("REM Build classpath dynamically\n")
                 bat_file.write("set CLASSPATH=\n")
-                bat_file.write(f"for %%F in (\"{rel_modules_dir.replace('/', '\\')}\\sfc-main\\lib\\*.jar\") do (\n")
-                bat_file.write("  if \"!CLASSPATH!\"==\"\" (\n")
+                windows_lib_path = rel_modules_dir.replace("/", "\\")
+                bat_file.write(
+                    f'for %%F in ("{windows_lib_path}\\sfc-main\\lib\\*.jar") do (\n'
+                )
+                bat_file.write('  if "!CLASSPATH!"=="" (\n')
                 bat_file.write("    set CLASSPATH=%%F\n")
                 bat_file.write("  ) else (\n")
                 bat_file.write("    set CLASSPATH=!CLASSPATH!;%%F\n")
@@ -466,7 +476,7 @@ class SFCRunner:
                 # Execute Java command - exact same format as in the runner method
                 bat_file.write("REM Execute SFC MainController\n")
                 bat_file.write(f"java ^\n")
-                bat_file.write("  -cp \"!CLASSPATH!\" ^\n")
+                bat_file.write('  -cp "!CLASSPATH!" ^\n')
                 bat_file.write("  com.amazonaws.sfc.MainController ^\n")
                 bat_file.write(f"  -config {config_rel_path} ^\n")
                 bat_file.write("  -trace\n")

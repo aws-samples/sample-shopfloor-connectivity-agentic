@@ -8,7 +8,7 @@ Handles folder cleaning and management operations.
 
 import os
 import shutil
-from typing import List, Optional
+from typing import Optional
 
 
 class SFCFolderOperations:

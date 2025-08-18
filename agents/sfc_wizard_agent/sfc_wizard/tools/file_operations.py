@@ -8,11 +8,8 @@ Handles reading and writing configuration files.
 
 import os
 import json
-import io
 import csv
-import tempfile
-from typing import Dict, Any, List, Tuple, Optional
-from pathlib import Path
+from typing import Tuple, Optional
 
 
 class SFCFileOperations:

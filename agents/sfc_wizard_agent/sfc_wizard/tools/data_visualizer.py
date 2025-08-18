@@ -10,7 +10,6 @@ Cross-platform support for Windows, macOS, and Linux.
 import os
 import json
 import glob
-import sys
 import platform
 
 # Handle cross-platform curses implementation

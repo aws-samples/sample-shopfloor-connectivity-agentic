@@ -120,6 +120,12 @@ class ChatUI:
             self.agent_ready = True
             print("✅ SFC Wizard Agent initialized with MCP tools")
 
+            # Display AWS credentials validation status in UI logs
+            if self.sfc_agent.aws_credentials_valid:
+                print("✅ AWS Bedrock credentials validated successfully")
+            else:
+                print(self.sfc_agent.aws_credentials_error)
+
     def _cleanup_async_tasks(self):
         """Clean up any pending asyncio tasks to prevent the 'Task was destroyed but it is pending' error."""
         try:
@@ -212,10 +218,10 @@ class ChatUI:
             try:
                 # Use cross-platform file handling with pathlib
                 env_path = Path(env_file_path)
-                
+
                 # Read content safely with universal newlines mode
-                content = env_path.read_text(encoding='utf-8')
-                
+                content = env_path.read_text(encoding="utf-8")
+
                 # Look for existing FLASK_SECRET_KEY in .env file
                 for line in content.splitlines():
                     if line.strip().startswith("FLASK_SECRET_KEY="):
@@ -223,9 +229,9 @@ class ChatUI:
 
                 # If FLASK_SECRET_KEY not found in .env, generate and append it
                 new_secret_key = secrets.token_urlsafe(32)
-                
+
                 # Append to file with platform-appropriate line endings
-                with open(env_file_path, "a", encoding='utf-8', newline='') as f:
+                with open(env_file_path, "a", encoding="utf-8", newline="") as f:
                     f.write("\n# Flask Secret Key (auto-generated)\n")
                     f.write(f"FLASK_SECRET_KEY={new_secret_key}\n")
 
@@ -236,6 +242,7 @@ class ChatUI:
                 print(f"⚠️ Error reading/writing .env file: {e}")
                 # Print more detailed error information for debugging
                 import traceback
+
                 traceback.print_exc()
 
         # If all else fails, generate a temporary secret key (not persistent)
@@ -754,11 +761,21 @@ class ChatUI:
 
     def _get_welcome_message(self) -> str:
         """Get the welcome message for new conversations."""
-        return """🏭 **AWS SHOP FLOOR CONNECTIVITY (SFC) WIZARD**
+        # Get AWS credentials status from agent if available
+        aws_status_message = ""
+        if hasattr(self, "sfc_agent") and self.sfc_agent:
+            if self.sfc_agent.aws_credentials_valid:
+                aws_status_message = (
+                    "✅ **AWS Bedrock credentials validated successfully**\n\n"
+                )
+            else:
+                aws_status_message = f"❌ **AWS Credentials Issue:**\n{self.sfc_agent.aws_credentials_error}\n\n"
+
+        return f"""🏭 **AWS SHOP FLOOR CONNECTIVITY (SFC) WIZARD**
 
 Specialized assistant for industrial data connectivity to AWS
 
-💾 **Session Persistence**: Your conversation is automatically saved and will persist for 5 minutes even if you refresh the page or close the browser tab.
+{aws_status_message}💾 **Session Persistence**: Your conversation is automatically saved and will persist for 5 minutes even if you refresh the page or close the browser tab.
 
 ⚡ **NEW: Streaming responses with interrupt capability!** Use the Stop button during any response to interrupt and continue with next query.
 
@@ -796,16 +813,16 @@ What would you like to do today?"""
         try:
             # Set up common signals available on all platforms
             signal.signal(signal.SIGINT, self._signal_handler)
-            
+
             # Set up SIGTERM which might not be available on Windows
-            if hasattr(signal, 'SIGTERM'):  # Check if SIGTERM exists
+            if hasattr(signal, "SIGTERM"):  # Check if SIGTERM exists
                 signal.signal(signal.SIGTERM, self._signal_handler)
-                
+
             # On Windows, also try to handle CTRL_C_EVENT and CTRL_BREAK_EVENT if available
             if platform.system() == "Windows":
-                if hasattr(signal, 'CTRL_C_EVENT'):
+                if hasattr(signal, "CTRL_C_EVENT"):
                     signal.signal(signal.CTRL_C_EVENT, self._signal_handler)
-                if hasattr(signal, 'CTRL_BREAK_EVENT'):
+                if hasattr(signal, "CTRL_BREAK_EVENT"):
                     signal.signal(signal.CTRL_BREAK_EVENT, self._signal_handler)
         except Exception as e:
             print(f"⚠️ Warning: Could not set up some signal handlers: {e}")
@@ -842,7 +859,7 @@ def main():
                 print("✅ Set Windows-compatible event loop policy")
             except Exception as e:
                 print(f"⚠️ Could not set Windows event loop policy: {e}")
-        
+
         # Load environment variables from .env file
         env_path = Path(__file__).parent.parent / ".env"
         if env_path.exists():
