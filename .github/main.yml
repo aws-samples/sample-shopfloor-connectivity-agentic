@@ -1,0 +1,51 @@
+---
+# This pipeline is for running build checks
+name: Build-Checks
+
+# Controls when the workflow will run
+on:
+  push:
+    # Triggers the workflow for feature branches and main (final confirmation)
+    branches:
+      - "bugfix/*"
+      - "feature/*"
+      - "main"
+  pull_request:
+    branches:
+      - main
+      - release/*
+
+jobs:
+  CheckBuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Linting-SFC-Wizard-Agent
+        run: 
+          cd agents/sfc_wizard_agent
+          ./scripts/init.sh
+          ./scripts/lint.sh
+          cd -
+      - name: Linting-SFC-Spec-MCP-Server
+        run: 
+          cd mcp-servers/sfc-spec-server
+          ./scripts/init.sh
+          ./scripts/lint.sh
+          cd -
+      - name: Testing-SFC-Wizard-Agent
+        run: 
+          cd agents/sfc_wizard_agent
+          ./scripts/test.sh
+          cd -
+      - name: Testing-SFC-Spec-MCP-Server
+        run: 
+          cd mcp-servers/sfc-spec-server
+          ./scripts/test.sh
+          cd -
+
+            

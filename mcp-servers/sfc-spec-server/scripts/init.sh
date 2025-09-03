@@ -1,6 +1,8 @@
 #!/bin/bash
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: MIT-0
 
+set -e  # Exit immediately if a command exits with a non-zero status
+
 # Initialize the environment
 echo "Setting up the MCP server environment..."
 

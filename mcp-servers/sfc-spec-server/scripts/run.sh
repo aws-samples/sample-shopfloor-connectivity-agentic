@@ -1,6 +1,7 @@
 #!/bin/bash
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: MIT-0
 
+set -e  # Exit immediately if a command exits with a non-zero status
 
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then

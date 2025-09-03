@@ -1,8 +1,6 @@
 #!/bin/bash
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. SPDX-License-Identifier: MIT-0
 
-# lint.sh - Lint the python code
-
 set -e  # Exit immediately if a command exits with a non-zero status
 
 cd "$(dirname "$0")/.."
