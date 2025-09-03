@@ -16,5 +16,9 @@ fi
 
 source .venv/bin/activate
 
-# Run black formatter on all Python code
-black sfc_wizard
+# Run black formatter check on all Python code (fails if formatting needed)
+echo "Running black formatter check..."
+black --check sfc_wizard
+
+# If we get here, black check passed
+echo "✅ Black formatting check passed"
