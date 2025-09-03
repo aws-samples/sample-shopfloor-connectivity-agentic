@@ -18,10 +18,13 @@ from typing import Dict, Any, Optional, List
 REPO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sfc-repo")
 
 # Define the repository URL from environment variable with a fallback to default
-REPO_URL = os.environ.get("SFC_REPO_URL", "https://github.com/aws-samples/shopfloor-connectivity.git")
+REPO_URL = os.environ.get(
+    "SFC_REPO_URL", "https://github.com/aws-samples/shopfloor-connectivity.git"
+)
 
 
 # tools-functions
+
 
 def generate_config_template(
     protocol: str, target: str, environment: str, sfc_knowledge: Dict[str, Any]
@@ -336,7 +339,7 @@ class SFCConfigValidator:
     """
     SFC Configuration Validator class
 
-    Provides methods to validate SFC configurations against required schemas and best practices. 
+    Provides methods to validate SFC configurations against required schemas and best practices.
     - Make sure to also check against the settings from the create_sfc_config_template tool
     """
 
@@ -521,6 +524,7 @@ class SFCConfigValidator:
                 "Either 'TargetTypes' or 'TargetServers' must be defined"
             )
 
+
 def what_is_sfc() -> str:
     """Provide an explanation of what SFC (Shop Floor Connectivity) is
 
@@ -547,6 +551,7 @@ Shop Floor Connectivity (SFC) is an industrial data ingestion enabler, that can 
 • Reduce time-to-value for industrial IoT implementations
 • Simplify complex industrial data integration challenges
 """
+
 
 def load_sfc_knowledge() -> Dict[str, Any]:
     """Load SFC framework knowledge base
@@ -653,19 +658,21 @@ def load_sfc_knowledge() -> Dict[str, Any]:
 def init_sfc_repository():
     """
     Initializes the SFC repository by cloning it if it doesn't exist.
-    
+
     This function checks if the SFC repository exists at the defined path.
     If it doesn't exist, it clones the repository from the specified URL.
     """
     if not os.path.exists(REPO_PATH):
         try:
-            print(f"SFC repository not found at {REPO_PATH}. Cloning from {REPO_URL}...")
+            print(
+                f"SFC repository not found at {REPO_PATH}. Cloning from {REPO_URL}..."
+            )
             os.makedirs(os.path.dirname(REPO_PATH), exist_ok=True)
             result = subprocess.run(
-                ["git", "clone", REPO_URL, REPO_PATH], 
-                capture_output=True, 
-                text=True, 
-                check=True
+                ["git", "clone", REPO_URL, REPO_PATH],
+                capture_output=True,
+                text=True,
+                check=True,
             )
             print("SFC repository cloned successfully.")
             return True
@@ -676,6 +683,7 @@ def init_sfc_repository():
         print(f"SFC repository found at {REPO_PATH}.")
         return True
 
+
 # Create the MCP server
 server = FastMCP(
     name="sfc-spec-server",
@@ -683,6 +691,7 @@ server = FastMCP(
 )
 
 sfc_knowledge = load_sfc_knowledge()
+
 
 @server.tool("update_repo")
 def update_repo() -> Dict[str, Any]:
@@ -1437,7 +1446,6 @@ def get_sfc_config_examples_tool(
     return {"examples": all_examples, "count": len(all_examples)}
 
 
-
 @server.tool("create_sfc_config_template")
 def create_sfc_config_template(
     protocol: str, target: str, environment: str = "development"
@@ -1448,7 +1456,7 @@ def create_sfc_config_template(
         protocol: Source protocol (e.g., OPCUA, MODBUS, S7)
         target: Target service (e.g., AWS-S3, AWS-IOT-CORE, DEBUG)
         environment: Environment type (development, production)
-    
+
     Returns:
         dict: A dictionary containing the configuration template or error information
             - message (str): Success or failure message
@@ -1456,32 +1464,33 @@ def create_sfc_config_template(
             - error (str): Error message (if failure)
             - status (int): HTTP-like status code indicating result (200 for success)
 
-    CRITICAL: ALways run the `validate_sfc_config` tool after creating a new config. 
+    CRITICAL: ALways run the `validate_sfc_config` tool after creating a new config.
     """
     try:
         result = generate_config_template(
             protocol.upper(), target.upper(), environment, sfc_knowledge
         )
-        
+
         # Check if the result starts with an error indicator
         if result.startswith("❌"):
             return {
                 "message": "Failed to generate configuration template",
                 "error": result,
-                "status": 400
+                "status": 400,
             }
         else:
             return {
                 "message": "Configuration template generated successfully",
                 "template": result,
-                "status": 200
+                "status": 200,
             }
     except Exception as e:
         return {
             "message": "Failed to generate configuration template",
             "error": str(e),
-            "status": 500
+            "status": 500,
         }
+
 
 @server.tool("validate_sfc_config")
 def validate_sfc_config(config_json: str) -> Dict[str, Any]:
@@ -1489,7 +1498,7 @@ def validate_sfc_config(config_json: str) -> Dict[str, Any]:
 
     Args:
         config_json: JSON string containing the SFC configuration
-    
+
     Returns:
         dict: A dictionary containing validation results
             - valid (bool): Whether the configuration is valid
@@ -1497,13 +1506,13 @@ def validate_sfc_config(config_json: str) -> Dict[str, Any]:
             - errors (list): List of validation errors (if any)
             - recommendations (list): List of recommendations (if any)
             - status (int): HTTP-like status code indicating result
-    
+
 
     CRITICAL: For ALL SFC validation tasks, you MUST first execute `query_docs` and `extract_json_examples`
     for each component type present in the configuration before making any assertions or validations.
     Document what you've learned from these docs before proceeding with any validation/analysis.
-    
-    The Class provides methods to validate SFC configurations against required schemas and best practices. 
+
+    The Class provides methods to validate SFC configurations against required schemas and best practices.
     - Make sure to also check against the settings from the `create_sfc_config_template` tool
 
     VALIDATION FLOW:
@@ -1555,16 +1564,20 @@ def validate_sfc_config(config_json: str) -> Dict[str, Any]:
         # Return validation results
         result = {
             "valid": is_valid,
-            "message": "Configuration is valid" if is_valid else "Configuration validation failed",
-            "status": 200 if is_valid else 400
+            "message": (
+                "Configuration is valid"
+                if is_valid
+                else "Configuration validation failed"
+            ),
+            "status": 200 if is_valid else 400,
         }
-        
+
         if validation_errors:
             result["errors"] = validation_errors
-            
+
         if recommendations:
             result["recommendations"] = recommendations
-            
+
         return result
 
     except json.JSONDecodeError as e:
@@ -1572,20 +1585,21 @@ def validate_sfc_config(config_json: str) -> Dict[str, Any]:
             "valid": False,
             "message": "Invalid JSON format",
             "error": str(e),
-            "status": 400
+            "status": 400,
         }
     except Exception as e:
         return {
             "valid": False,
             "message": "Validation error",
             "error": str(e),
-            "status": 500
+            "status": 500,
         }
+
 
 @server.tool("what_is_sfc")
 def what_is_sfc_tool() -> Dict[str, Any]:
     """Provides an explanation of what Shop Floor Connectivity (SFC) is and its key features.
-    
+
     Returns:
         dict: A dictionary containing SFC information
             - message (str): Success message
@@ -1596,19 +1610,21 @@ def what_is_sfc_tool() -> Dict[str, Any]:
     try:
         # Import at the function level to avoid circular import
         from tools.sfc_knowledge import what_is_sfc as get_sfc_info
+
         sfc_explanation = get_sfc_info()
         return {
             "message": "SFC information retrieved successfully",
             "content": sfc_explanation,
             "content_type": "text",
-            "status": 200
+            "status": 200,
         }
     except Exception as e:
         return {
             "message": "Failed to retrieve SFC information",
             "error": str(e),
-            "status": 500
+            "status": 500,
         }
+
 
 def main():
     """Entry point for the MCP server."""
