@@ -26,26 +26,24 @@ jobs:
         with:
           node-version: 18
       - name: Linting-SFC-Wizard-Agent
-        run: 
+        run: |
           cd agents/sfc_wizard_agent
           ./scripts/init.sh
           ./scripts/lint.sh
           cd -
       - name: Linting-SFC-Spec-MCP-Server
-        run: 
+        run: |
           cd mcp-servers/sfc-spec-server
           ./scripts/init.sh
           ./scripts/lint.sh
           cd -
       - name: Testing-SFC-Wizard-Agent
-        run: 
+        run: |
           cd agents/sfc_wizard_agent
           ./scripts/test.sh
           cd -
       - name: Testing-SFC-Spec-MCP-Server
-        run: 
+        run: |
           cd mcp-servers/sfc-spec-server
           ./scripts/test.sh
           cd -
-
-            
