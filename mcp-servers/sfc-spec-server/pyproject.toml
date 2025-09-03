@@ -14,7 +14,8 @@ license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.10.4"
+    "fastmcp>=2.10.4",
+    "black>=25.1.0",
 ]
 keywords = ["mcp", "server", "sfc", "spec", "documentation"]
 classifiers = [

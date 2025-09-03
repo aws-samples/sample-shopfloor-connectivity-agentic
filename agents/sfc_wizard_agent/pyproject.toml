@@ -17,7 +17,7 @@ dependencies = [
     "strands-agents",
     "strands-agents-tools",
     "python-dotenv",
-    "black",
+    "black>=25.1.0",
     "jmespath",
     "fastmcp>=2.10.4",
     "markdown>=3.8.2",
