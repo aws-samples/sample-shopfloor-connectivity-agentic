@@ -90,14 +90,11 @@ def visualize_file_target_data(
     timeframe_seconds = None
     if seconds is not None:
         timeframe_seconds = seconds
-        timeframe_description = f"last {seconds} seconds"
     elif minutes is not None:
         timeframe_seconds = minutes * 60
-        timeframe_description = f"last {minutes} minutes"
     else:
         # Default to 15 seconds if neither is provided
         timeframe_seconds = 15
-        timeframe_description = "last 15 seconds"
 
     # Call the data visualizer with UI mode parameter
     result = visualize_time_series(data_dir, jmespath_expr, timeframe_seconds, ui_mode)
