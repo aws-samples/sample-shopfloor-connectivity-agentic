@@ -9,12 +9,12 @@
 - **Chat Interface**: Flask + SocketIO web server providing real-time chat
 - **Streaming Output Capture**: Captures and streams stdout/stderr in real-time
 
-### 🤖 **Agent Core Layer**
-- **SFC Wizard Agent**: Main AI agent built with Strands SDK
-- **AWS Bedrock Model**: Claude 3.7 Sonnet LLM for natural language processing
-- **MCP Client**: Model Context Protocol client for external knowledge access
+### 🤖 **Strands Agent**
+- **SFCWizardAgent**: Main AI agent class built with Strands SDK
+- **BedrockModel**: Claude 3.7 Sonnet LLM integration for natural language processing
+- **MCPClient**: Model Context Protocol client for external knowledge access
 
-### 🛠️ **Internal Tools**
+### 🛠️ **Agent Tools**
 1. **File Operations**: Configuration and file management
 2. **SFC Runner**: Local test environment execution
 3. **Log Operations**: Real-time log monitoring and tailing
