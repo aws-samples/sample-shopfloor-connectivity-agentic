@@ -15,7 +15,7 @@ import logging
 import threading
 import queue
 from logging.handlers import RotatingFileHandler
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Optional, Tuple
 from .sfc_module_analyzer import analyze_sfc_config_for_modules
 from .log_operations import SFCLogOperations
 
