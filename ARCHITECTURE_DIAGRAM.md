@@ -11,7 +11,7 @@
 
 ### 🤖 **Strands Agent**
 - **SFCWizardAgent**: Main AI agent class built with Strands SDK
-- **BedrockModel**: Claude 3.7 Sonnet LLM integration for natural language processing
+- **Bedrock Model**: Claude 3.7 Sonnet LLM integration for natural language processing
 - **MCPClient**: Model Context Protocol client for external knowledge access
 
 ### 🛠️ **Agent Tools**
