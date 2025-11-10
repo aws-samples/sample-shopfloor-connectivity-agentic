@@ -169,14 +169,14 @@ def _validate_bedrock_service_access(
 
         # Check if this is a cross-region model (starts with region prefix like "us.")
         is_cross_region = "." in model_id and model_id.split(".")[0] in [
-            "global",
             "us",
             "eu",
             "ap",
             "ca",
             "sa",
             "af",
-            "me"
+            "me",
+            "global",
         ]
 
         # For cross-region models, strip the region prefix for availability check
