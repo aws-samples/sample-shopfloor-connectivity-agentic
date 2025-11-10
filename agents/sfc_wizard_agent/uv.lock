@@ -2347,7 +2347,7 @@ windows = [
 
 [package.metadata]
 requires-dist = [
-    { name = "black" },
+    { name = "black", specifier = ">=25.1.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.1.0" },
     { name = "fastmcp", specifier = ">=2.10.4" },
     { name = "flask", specifier = ">=2.3.0" },

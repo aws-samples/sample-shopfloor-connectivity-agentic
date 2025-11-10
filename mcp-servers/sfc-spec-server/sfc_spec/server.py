@@ -19,7 +19,7 @@ REPO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sfc-repo")
 
 # Define the repository URL from environment variable with a fallback to default
 REPO_URL = os.environ.get(
-    "SFC_REPO_URL", "https://github.com/aws-samples/shopfloor-connectivity.git"
+    "SFC_REPO_URL", "https://github.com/awslabs/industrial-shopfloor-connect.git"
 )
 
 
