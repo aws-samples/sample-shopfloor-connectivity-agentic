@@ -110,7 +110,7 @@ class SFCRunner:
 
             # Fetch the latest SFC release information
             response = requests.get(
-                "https://api.github.com/repos/aws-samples/shopfloor-connectivity/releases/latest"
+                "https://api.github.com/repos/awslabs/industrial-shopfloor-connect/releases/latest"
             )
             if response.status_code != 200:
                 result = f"❌ Failed to fetch SFC release information: HTTP {response.status_code}"
@@ -134,7 +134,7 @@ class SFCRunner:
             module_target_dir = os.path.join(modules_dir, sfc_main_module)
 
             if not os.path.exists(module_target_dir):
-                sfc_main_url = f"https://github.com/aws-samples/shopfloor-connectivity/releases/download/{sfc_version}/{sfc_main_module}.tar.gz"
+                sfc_main_url = f"https://github.com/awslabs/industrial-shopfloor-connect/releases/download/{sfc_version}/{sfc_main_module}.tar.gz"
 
                 # Download the SFC main binary
                 print(f"⬇️ Downloading SFC main {sfc_version}...")
@@ -212,7 +212,7 @@ class SFCRunner:
 
                 # Check if module already exists in shared modules directory
                 if not os.path.exists(module_target_dir):
-                    module_url = f"https://github.com/aws-samples/shopfloor-connectivity/releases/download/{sfc_version}/{module}.tar.gz"
+                    module_url = f"https://github.com/awslabs/industrial-shopfloor-connect/releases/download/{sfc_version}/{module}.tar.gz"
                     print(f"⬇️ Downloading module: {module}...")
 
                     try:

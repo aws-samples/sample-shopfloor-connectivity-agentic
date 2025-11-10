@@ -1,7 +1,7 @@
 Shop Floor Connectivity - Agentic
 ================================
 
-AI-powered assistant for [AWS provided Shop Floor Connectivity (SFC)](https://github.com/aws-samples/shopfloor-connectivity) configuration management and testing. Using python [Strands Agents SDK](https://strandsagents.com/latest/documentation/docs/api-reference/agent/) and [FastMCP](https://gofastmcp.com/getting-started/welcome). **All code** in that example was created using Cline and [Kiro app](https://kiro.dev/).
+AI-powered assistant for [AWS provided Shop Floor Connectivity (SFC)](https://github.com/awslabs/industrial-shopfloor-connect) configuration management and testing. Using python [Strands Agents SDK](https://strandsagents.com/latest/documentation/docs/api-reference/agent/) and [FastMCP](https://gofastmcp.com/getting-started/welcome). **All code** in that example was created using Cline and [Kiro app](https://kiro.dev/).
 
 ### The Agent in it's own words
 
@@ -63,7 +63,7 @@ Currently tested on **macOS** and **Linux**. Windows support not yet verified.
 
 ## Links
 
-- [Shopfloor Connectivity Framework](https://github.com/aws-samples/shopfloor-connectivity)
+- [Shopfloor Connectivity Framework](https://github.com/awslabs/industrial-shopfloor-connect)
 - [Strands Agents SDK](https://github.com/strands-agents/sdk-python)
 
 ## License

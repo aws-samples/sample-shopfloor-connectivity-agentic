@@ -176,6 +176,7 @@ def _validate_bedrock_service_access(
             "sa",
             "af",
             "me",
+            "global",
         ]
 
         # For cross-region models, strip the region prefix for availability check
