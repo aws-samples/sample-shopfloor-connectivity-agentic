@@ -364,13 +364,13 @@ class SFCRunner:
 
             # Get log level from environment variable (default to "info")
             sfc_log_level = os.getenv("SFC_LOG_LEVEL", "info").lower()
-            
+
             # Validate log level and set the appropriate command line option
             if sfc_log_level == "trace":
                 log_option = "-trace"
             else:  # Default to info for any other value
                 log_option = "-info"
-            
+
             # Construct the command properly as an array
             command = [
                 java_cmd,  # Java executable
