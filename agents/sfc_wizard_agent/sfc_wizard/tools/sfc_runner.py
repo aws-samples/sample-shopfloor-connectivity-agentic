@@ -362,6 +362,15 @@ class SFCRunner:
 
             # print(f"Using classpath: {classpath}")
 
+            # Get log level from environment variable (default to "info")
+            sfc_log_level = os.getenv("SFC_LOG_LEVEL", "info").lower()
+            
+            # Validate log level and set the appropriate command line option
+            if sfc_log_level == "trace":
+                log_option = "-trace"
+            else:  # Default to info for any other value
+                log_option = "-info"
+            
             # Construct the command properly as an array
             command = [
                 java_cmd,  # Java executable
@@ -370,7 +379,7 @@ class SFCRunner:
                 "com.amazonaws.sfc.MainController",  # Main class
                 "-config",
                 config_filename,  # SFC arguments
-                "-trace",
+                log_option,
             ]
 
             # Set up environment variables for the SFC process
@@ -443,7 +452,7 @@ class SFCRunner:
                 sh_file.write("done\n\n")
                 # Execute Java command
                 sh_file.write(
-                    f'java -cp "$CLASSPATH" com.amazonaws.sfc.MainController -config {config_rel_path} -trace\n'
+                    f'java -cp "$CLASSPATH" com.amazonaws.sfc.MainController -config {config_rel_path} {log_option}\n'
                 )
 
             # Make the shell script executable
@@ -479,7 +488,7 @@ class SFCRunner:
                 bat_file.write('  -cp "!CLASSPATH!" ^\n')
                 bat_file.write("  com.amazonaws.sfc.MainController ^\n")
                 bat_file.write(f"  -config {config_rel_path} ^\n")
-                bat_file.write("  -trace\n")
+                bat_file.write(f"  {log_option}\n")
                 bat_file.write("\nendlocal\n")
 
             # Start log tail thread if it's not already running
